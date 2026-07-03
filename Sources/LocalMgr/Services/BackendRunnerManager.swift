@@ -43,7 +43,7 @@ class BackendRunnerManager: ObservableObject {
     func sendTestPing(modelName: String, promptText: String) {
         guard status == .running else { return }
         isPinging = true
-        lastPingResponse = "Sending 64-token ping to http://127.0.0.1:\(port)/v1/chat/completions..."
+        lastPingResponse = "Sending 256-token verification ping to http://127.0.0.1:\(port)/v1/chat/completions..."
         recordActivity()
 
         let url = URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
@@ -53,7 +53,7 @@ class BackendRunnerManager: ObservableObject {
         let payload: [String: Any] = [
             "model": modelName,
             "messages": [["role": "user", "content": promptText]],
-            "max_tokens": 64
+            "max_tokens": 256
         ]
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
 
@@ -73,10 +73,18 @@ class BackendRunnerManager: ObservableObject {
                    let first = choices.first {
                     var extractedText: String? = nil
                     if let msg = first["message"] as? [String: Any] {
-                        if let contentStr = msg["content"] as? String {
+                        var contentStr = (msg["content"] as? String) ?? ""
+                        if contentStr.isEmpty, let contentArr = msg["content"] as? [[String: Any]] {
+                            contentStr = contentArr.compactMap { $0["text"] as? String }.joined(separator: " ")
+                        }
+                        let reasoningStr = (msg["reasoning_content"] as? String) ?? ""
+
+                        if !contentStr.isEmpty && !reasoningStr.isEmpty {
+                            extractedText = "--- Thinking Process ---\n\(reasoningStr)\n\n--- Final Response ---\n\(contentStr)"
+                        } else if !contentStr.isEmpty {
                             extractedText = contentStr
-                        } else if let contentArr = msg["content"] as? [[String: Any]] {
-                            extractedText = contentArr.compactMap { $0["text"] as? String }.joined(separator: " ")
+                        } else if !reasoningStr.isEmpty {
+                            extractedText = "--- Thinking Process (Max tokens reached before answer) ---\n\(reasoningStr)"
                         }
                     } else if let textStr = first["text"] as? String {
                         extractedText = textStr

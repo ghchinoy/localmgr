@@ -208,7 +208,7 @@ struct QuickTestView: View {
             } else {
                 Text("Verify Model Readiness")
                     .font(.headline)
-                Text("Send a lightweight 64-token ping directly to port \(String(runner.port)) to verify weights initialized properly before connecting external IDEs.")
+                Text("Send a lightweight 256-token verification ping directly to port \(String(runner.port)) to confirm weights initialized properly before connecting external IDEs.")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
