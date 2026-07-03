@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-03
+
+_Minor release (Build 4) delivering Phase 1 observability foundation, Prometheus metrics, structured telemetry, and routing conflict guardrails._
+
+### Added
+- **Prometheus Exposition Endpoint:** serve `GET /metrics` formatted with standardized Envoy AI Gateway stat names (`ai_gateway_llm_requests_total`, `ai_gateway_llm_token_usage_total`, `ai_gateway_llm_upstream_health_status`) as outlined in RFC 001 (`[localmgr-khk.6]`).
+- **Structured JSON Telemetry:** expose `GET /v1/stats` and `/health` reporting live uptime, listening ports, request counters, token throughput, TTFT, and TPS generation speeds (`[localmgr-khk.6]`).
+- **Active Model Catalog Marker:** inject `"active": true` into `GET /v1/models` responses for whichever engine is currently active on the gateway (`[localmgr-khk.5]`).
+- **Live Speedometer & Timing Telemetry:** track Time-to-First-Token (TTFT) and Tokens Per Second (`tok/s`) across proxy streams, displaying a real-time speedometer inside the UI Gateway card (`[localmgr-khk.1]`).
+- **Inference Routing Guardrails:** return explicit HTTP `409 Conflict` payloads when an external client requests a different model while an engine runner is actively hosting a session, preventing unexpected VRAM swap thrashing (`[localmgr-khk.1]`).
+
 ## [0.2.0] - 2026-07-03
 
 _Minor release (Build 3) delivering catalog refresh controls, clean session log resets, app exit runner auto-termination, and API gateway documentation._
@@ -52,7 +63,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ghchinoy/localmgr/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ghchinoy/localmgr/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ghchinoy/localmgr/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ghchinoy/localmgr/releases/tag/v0.1.0
