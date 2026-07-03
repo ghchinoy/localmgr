@@ -4,6 +4,9 @@ This document establishes the official **Core User Journeys (CUJs)** for **Local
 
 This record serves as the foundational reference for future product iterations, acceptance testing, and the generation of our **Diátaxis documentation suite** (Tutorials, How-To Guides, Reference, and Explanation).
 
+> [!NOTE]
+> For step-by-step persona tutorials and cURL reasoning recipes, see **[USER_GUIDE.md](USER_GUIDE.md)**. For technical implementation details and system diagrams, see **[ARCHITECTURE_PLAN.md](ARCHITECTURE_PLAN.md)**.
+
 ---
 
 ## CUJ-1: Core Discover, Precise Fit & Engine Readiness
