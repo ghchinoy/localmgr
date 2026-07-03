@@ -8,6 +8,7 @@ struct LocalMgrApp: App {
     @StateObject private var readinessService = EngineReadinessService()
     @StateObject private var gateway = LocalAPIGateway()
     @StateObject private var appSettings = AppSettings()
+    @StateObject private var downloader = HubDownloaderService()
 
     var body: some Scene {
         WindowGroup {
@@ -18,6 +19,7 @@ struct LocalMgrApp: App {
                 .environmentObject(readinessService)
                 .environmentObject(gateway)
                 .environmentObject(appSettings)
+                .environmentObject(downloader)
                 .frame(minWidth: 950, minHeight: 600)
                 .onAppear {
                     runnerManager.configure(settings: appSettings)

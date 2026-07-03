@@ -76,6 +76,7 @@ struct ModelItem: Identifiable, Hashable {
     var contextLength: Int?
     var layerCount: Int?
     var headCountKV: Int?
+    var chatTemplate: String?
 
     var sizeFormatted: String {
         let formatter = ByteCountFormatter()

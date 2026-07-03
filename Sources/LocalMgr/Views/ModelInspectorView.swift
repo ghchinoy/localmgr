@@ -139,6 +139,7 @@ struct ModelInspectorView: View {
                     Section(header: Text("Model File Details")) {
                         LabeledContent("File Path", value: model.fileURL.path)
                         LabeledContent("Size", value: model.sizeFormatted)
+                        LabeledContent("Chat Template", value: model.chatTemplate ?? "Auto-Detected")
                         if let ctx = model.contextLength {
                             LabeledContent("Default Context Length", value: "\(ctx) tokens")
                         }

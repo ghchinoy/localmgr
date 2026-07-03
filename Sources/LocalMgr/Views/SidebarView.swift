@@ -5,6 +5,7 @@ struct SidebarView: View {
     @EnvironmentObject var runner: BackendRunnerManager
     @EnvironmentObject var readiness: EngineReadinessService
     @EnvironmentObject var gateway: LocalAPIGateway
+    @EnvironmentObject var downloader: HubDownloaderService
 
     var body: some View {
         List {
@@ -24,6 +25,44 @@ struct SidebarView: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
+            }
+
+            Section(header: Text("Curated Hugging Face Hub")) {
+                if downloader.isDownloading {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(downloader.statusMessage)
+                            .font(.caption2)
+                            .foregroundColor(.accentColor)
+                        ProgressView(value: downloader.progress)
+                    }
+                    .padding(.vertical, 2)
+                } else {
+                    ForEach(downloader.curatedCatalog) { item in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.name)
+                                    .font(.caption)
+                                Text("\(item.format.rawValue) • \(item.sizeFormatted)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button(action: {
+                                if let targetFolder = catalog.folders.first {
+                                    downloader.downloadModel(item, targetFolder: targetFolder, catalog: catalog)
+                                } else {
+                                    catalog.promptAddFolder()
+                                }
+                            }) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .foregroundColor(.blue)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Download verified model with SHA-256 hash check")
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
             }
 
             Section(header: Text("Vault Locations")) {
