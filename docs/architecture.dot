@@ -1,0 +1,68 @@
+digraph LocalMgrArchitecture {
+    rankdir=TB;
+    bgcolor="transparent";
+    fontname="Helvetica,Arial,sans-serif";
+    node [fontname="Helvetica,Arial,sans-serif", shape=box, style="rounded,filled", fillcolor="#f0f4f8", color="#cbd5e1", penwidth=1.5];
+    edge [fontname="Helvetica,Arial,sans-serif", color="#64748b", penwidth=1.2];
+
+    subgraph cluster_Clients {
+        label = "External Tools & Clients";
+        style = "rounded";
+        color = "#64748b";
+        fontcolor = "#1e293b";
+        fontsize = 14;
+        Clients [label="Cursor / Continue / Xcode / Scripts\n(OpenAI-Compatible Requests)", fillcolor="#f1f5f9"];
+    }
+
+    subgraph cluster_UI {
+        label = "macOS SwiftUI Layer (HIG Compliant)";
+        style = "rounded";
+        color = "#94a3b8";
+        fontcolor = "#1e293b";
+        fontsize = 14;
+        Nav [label="NavigationSplitView\n(3-Column UI)", fillcolor="#e0f2fe"];
+        MenuBar [label="MenuBarExtra\n(Status Item & Telemetry)", fillcolor="#e0f2fe"];
+        Inspector [label="Model Inspector\n& Template Overrides", fillcolor="#e0f2fe"];
+    }
+
+    subgraph cluster_Core {
+        label = "LocalMgr Core Services & Gateway";
+        style = "rounded";
+        color = "#94a3b8";
+        fontcolor = "#1e293b";
+        fontsize = 14;
+        Gateway [label="Unified Local API Gateway\n(Port 4891 Reverse Proxy & On-Demand Launch)", fillcolor="#f3e8ff", penwidth=2.0, color="#9333ea"];
+        Catalog [label="ModelCatalogService\n(Security-Scoped Bookmarks & BYOF)", fillcolor="#dcfce7"];
+        Orchestrator [label="BackendRunnerManager\n(Hardware Auto-Tuning & Subprocess Control)", fillcolor="#dcfce7"];
+        Monitor [label="SystemMonitorService\n(Mach Telemetry & Emergency Pressure Release)", fillcolor="#dcfce7"];
+        Downloader [label="HubDownloaderService\n(Chunked Transfers & SHA-256 Checksums)", fillcolor="#dcfce7"];
+    }
+
+    subgraph cluster_Backends {
+        label = "Execution Engine Backends";
+        style = "rounded";
+        color = "#94a3b8";
+        fontcolor = "#1e293b";
+        fontsize = 14;
+        Llama [label="llama.cpp (llama-server)\nGGUF LLMs", fillcolor="#fef3c7"];
+        MLX [label="MLX Engine (mlx_lm.server)\nApple Silicon .safetensors", fillcolor="#fef3c7"];
+        Kokoro [label="Kokoro RS / ONNX\nFast 82M TTS Audio", fillcolor="#fef3c7"];
+        Gemma [label="gemma.cpp C++ Binary\nGemma Native", fillcolor="#fef3c7"];
+    }
+
+    Clients -> Gateway [label=" POST /v1/..."];
+    Gateway -> Orchestrator [label=" On-Demand Wake / Proxy"];
+
+    Nav -> Catalog [dir=both];
+    Nav -> Orchestrator [dir=both];
+    MenuBar -> Monitor [dir=both];
+    Inspector -> Orchestrator [dir=both];
+
+    Monitor -> Orchestrator [label=" Memory Pressure / Idle TTL Unload", color="#ef4444", style="dashed"];
+
+    Catalog -> Downloader [dir=both];
+    Orchestrator -> Llama;
+    Orchestrator -> MLX;
+    Orchestrator -> Kokoro;
+    Orchestrator -> Gemma;
+}

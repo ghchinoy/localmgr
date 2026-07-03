@@ -1,8 +1,7 @@
 .build/
-*.app/
 *.xcodeproj
 *.xcworkspace
+LocalMgr.app/
 .DS_Store
 *.swp
 *~
-.beads/*.lock
