@@ -9,6 +9,31 @@ struct SidebarView: View {
 
     var body: some View {
         List {
+            Section {
+                HStack(spacing: 12) {
+                    let imgPath = Bundle.main.path(forResource: "AppIcon", ofType: "png") ?? Bundle.main.bundlePath.appending("/Contents/Resources/AppIcon.png")
+                    if let nsImg = NSImage(contentsOfFile: imgPath) {
+                        Image(nsImage: nsImg)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 40, height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else {
+                        Image(systemName: "cpu.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.accentColor)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("LocalMgr")
+                            .font(.headline.bold())
+                        Text("v1.0.0 • macOS Apple Silicon")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
             Section(header: Text("API Gateway (Port \(String(gateway.port)))")) {
                 HStack {
                     Circle()

@@ -18,6 +18,8 @@ app: build
 	mkdir -p $(RESOURCES_DIR)
 	cp $(BUILD_DIR)/$(APP_NAME) $(MACOS_DIR)/$(APP_NAME)
 	cp Info.plist $(CONTENTS_DIR)/Info.plist
+	cp AppIcon.icns $(RESOURCES_DIR)/AppIcon.icns 2>/dev/null || true
+	cp AppIcon.png $(RESOURCES_DIR)/AppIcon.png 2>/dev/null || true
 	# Copy SPM resource bundles if present
 	cp -R $(BUILD_DIR)/*.bundle $(RESOURCES_DIR)/ 2>/dev/null || true
 	# Flush LaunchServices icon cache

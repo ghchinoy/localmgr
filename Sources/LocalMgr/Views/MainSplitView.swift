@@ -20,14 +20,31 @@ struct MainSplitView: View {
             if let selected = catalog.selectedModel {
                 ModelInspectorView(model: selected)
             } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "cpu.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    Text("Select a model from the list to inspect and run")
-                        .font(.title3)
-                        .foregroundColor(.secondary)
+                VStack(spacing: 20) {
+                    let imgPath = Bundle.main.path(forResource: "AppIcon", ofType: "png") ?? Bundle.main.bundlePath.appending("/Contents/Resources/AppIcon.png")
+                    if let nsImg = NSImage(contentsOfFile: imgPath) {
+                        Image(nsImage: nsImg)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 120, height: 120)
+                            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                            .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 6)
+                    } else {
+                        Image(systemName: "cpu.fill")
+                            .font(.system(size: 64))
+                            .foregroundColor(.secondary)
+                    }
+                    VStack(spacing: 6) {
+                        Text("LocalMgr — AI Orchestrator")
+                            .font(.title2.bold())
+                        Text("Select a model from the sidebar to inspect weights, tune Apple Silicon flags, or start inference.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 400)
+                    }
                 }
+                .padding()
             }
         }
         .toolbar {
