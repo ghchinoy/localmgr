@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-03
+
+_Patch release (Build 6) delivering 30-minute reverse proxy timeouts, recursive Hugging Face Hub tree discovery with token authorization, clickable UI speedometers, and modal sheet dismiss controls._
+
+### Added
+- **Interactive Speedometer Navigation:** make the `⚡️ tok/s • TTFT` gauge in `SidebarView` clickable so users can directly open the Enterprise Ops Telemetry Dashboard (`[localmgr-3h0.3]`).
+- **Modal Sheet Dismiss Control:** add an explicit `Close` toolbar button and `Esc` hotkey binding inside `OpsDashboardView` (`[localmgr-3h0.4]`).
+
+### Fixed
+- **Proxy Timeout for Large Completions:** replace `URLSession.shared` (60s default timeout) with a custom `proxySession` configured with `timeoutIntervalForRequest = 1800.0` (30 minutes), preventing `The request timed out.` errors during 2048+ token generations (`[localmgr-3h0.5]`).
+- **Recursive Hugging Face Tree & Token Auth:** update `HuggingFaceAPIClient` to query repository trees recursively (`?recursive=true`) and automatically inject cached credentials (`HF_TOKEN` / `~/.cache/huggingface/token`) so subfolder weight files and gated repositories resolve cleanly (`[localmgr-3h0.1]`).
+- **BYOF Documentation Clarity:** update `USER_GUIDE.md` to remove external SSD emphasis and align terminology with standard local directory attachments (`[localmgr-3h0.2]`).
+
 ## [0.4.0] - 2026-07-03
 
 _Minor release (Build 5) delivering persistent telemetry history, enterprise Ops monitoring dashboard, automated benchmark harness, and make install target._
@@ -74,7 +87,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/ghchinoy/localmgr/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ghchinoy/localmgr/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ghchinoy/localmgr/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ghchinoy/localmgr/compare/v0.1.1...v0.2.0
