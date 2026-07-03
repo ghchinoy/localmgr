@@ -51,6 +51,10 @@
 ### Inference Routing Guardrails
 - **Fast-Fail on Active Conflicts**: When implementing local reverse proxies over single-model engines (`llama-server`, `mlx_lm.server`), never auto-swap models if another runner session is actively running. If an incoming API request (`/v1/chat/completions`) specifies a model that differs from the currently active runner, return an explicit HTTP `409 Conflict` (unless requested as `"default"` or `"local"`) to protect active developer sessions and prevent VRAM swap thrashing.
 
+### Telemetry Persistence & KV Cache Accounting
+- **Append-Only JSONL Storage**: When persisting continuous inference telemetry (`history.jsonl`) from high-frequency HTTP proxy streams, use append-only file operations (`FileHandle.seekToEndOfFile()`) rather than re-encoding entire historical arrays on `@MainActor` to prevent UI frame drops during high tokens-per-second generation.
+- **Prefix Cache Hit Rate**: When parsing `usage` from OpenAI-compatible local engines (`llama-server`), check for `prompt_tokens_details.cached_tokens`. Calculate prefix optimization as `cached_tokens / prompt_tokens` to provide developers with real-time insight into prompt reuse efficiency.
+
 ## Build & Run Commands
 - Compile release build: `make build` or `swift build -c release`
 - Bundle macOS App: `make app`
