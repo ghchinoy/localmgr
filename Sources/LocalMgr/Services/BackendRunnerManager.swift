@@ -11,6 +11,7 @@ enum RunnerStatus: String {
 @MainActor
 class BackendRunnerManager: ObservableObject {
     @Published var activeModel: ModelItem?
+    @Published var lastRunModelID: UUID?
     @Published var status: RunnerStatus = .stopped
     @Published var logOutput: String = ""
     @Published var port: Int = 8080
@@ -117,6 +118,7 @@ class BackendRunnerManager: ObservableObject {
         stopCurrent()
         recordActivity()
         self.activeModel = model
+        self.lastRunModelID = model.id
         self.status = .starting
         self.logOutput.append("\n--- Starting \(model.name) via \(model.engineType.rawValue) ---\n")
 

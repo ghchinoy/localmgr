@@ -38,7 +38,7 @@ struct ModelInspectorView: View {
                 }
                 Spacer()
 
-                if runner.activeModel?.id == model.id {
+                if runner.activeModel?.id == model.id && (runner.status == .running || runner.status == .starting) {
                     Button(action: { runner.stopCurrent() }) {
                         Label("Stop Runner", systemImage: "stop.fill")
                     }
@@ -152,7 +152,7 @@ struct ModelInspectorView: View {
                 .formStyle(.grouped)
             } else if selectedTab == 1 {
                 ScrollView {
-                    if runner.activeModel?.id == model.id {
+                    if runner.activeModel?.id == model.id || runner.lastRunModelID == model.id {
                         Text(runner.logOutput.isEmpty ? "No logs generated yet. Waiting for stdout/stderr..." : runner.logOutput)
                             .font(.system(.caption, design: .monospaced))
                             .textSelection(.enabled)
@@ -166,7 +166,7 @@ struct ModelInspectorView: View {
                                 Text("This model is currently stopped.")
                                     .font(.headline)
                             }
-                            Text("The live logs pane only displays terminal output for the currently active engine runner. Click 'Start Runner' at the top right to start \(model.name) and stream its stdout/stderr.")
+                            Text("The live logs pane displays terminal output for the active or last run engine session. Click 'Start Runner' at the top right to start \(model.name) and stream its stdout/stderr.")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
