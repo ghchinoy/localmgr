@@ -14,6 +14,8 @@ class BackendRunnerManager: ObservableObject {
     @Published var status: RunnerStatus = .stopped
     @Published var logOutput: String = ""
     @Published var port: Int = 8080
+    @Published var lastPingResponse: String = ""
+    @Published var isPinging: Bool = false
 
     private var currentProcess: Process?
     private var pipe: Pipe?
@@ -35,6 +37,71 @@ class BackendRunnerManager: ObservableObject {
 
     func recordActivity() {
         self.lastActivityDate = Date()
+    }
+
+    func sendTestPing(modelName: String, promptText: String) {
+        guard status == .running else { return }
+        isPinging = true
+        lastPingResponse = "Sending 64-token ping to http://127.0.0.1:\(port)/v1/chat/completions..."
+        recordActivity()
+
+        let url = URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "model": modelName,
+            "messages": [["role": "user", "content": promptText]],
+            "max_tokens": 64
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        Task {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: req)
+                guard let httpResp = response as? HTTPURLResponse else {
+                    await MainActor.run {
+                        self.lastPingResponse = "Error: Did not receive valid HTTP response."
+                        self.isPinging = false
+                    }
+                    return
+                }
+
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let choices = json["choices"] as? [[String: Any]],
+                   let first = choices.first {
+                    var extractedText: String? = nil
+                    if let msg = first["message"] as? [String: Any] {
+                        if let contentStr = msg["content"] as? String {
+                            extractedText = contentStr
+                        } else if let contentArr = msg["content"] as? [[String: Any]] {
+                            extractedText = contentArr.compactMap { $0["text"] as? String }.joined(separator: " ")
+                        }
+                    } else if let textStr = first["text"] as? String {
+                        extractedText = textStr
+                    }
+
+                    await MainActor.run {
+                        if let text = extractedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.lastPingResponse = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        } else {
+                            self.lastPingResponse = "HTTP \(httpResp.statusCode) OK (Empty content returned): " + (String(data: data, encoding: .utf8) ?? "")
+                        }
+                        self.isPinging = false
+                    }
+                } else {
+                    await MainActor.run {
+                        self.lastPingResponse = "HTTP \(httpResp.statusCode): " + (String(data: data, encoding: .utf8) ?? "Unknown response")
+                        self.isPinging = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.lastPingResponse = "Network error pinging model: \(error.localizedDescription)"
+                    self.isPinging = false
+                }
+            }
+        }
     }
 
     private func checkIdleTimeout() {

@@ -152,11 +152,27 @@ struct ModelInspectorView: View {
                 .formStyle(.grouped)
             } else if selectedTab == 1 {
                 ScrollView {
-                    Text(runner.logOutput.isEmpty ? "No logs generated yet. Start the model to view stdout/stderr." : runner.logOutput)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if runner.activeModel?.id == model.id {
+                        Text(runner.logOutput.isEmpty ? "No logs generated yet. Waiting for stdout/stderr..." : runner.logOutput)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "pause.circle.fill")
+                                    .foregroundColor(.secondary)
+                                Text("This model is currently stopped.")
+                                    .font(.headline)
+                            }
+                            Text("The live logs pane only displays terminal output for the currently active engine runner. Click 'Start Runner' at the top right to start \(model.name) and stream its stdout/stderr.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
                         .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .background(Color(NSColor.textBackgroundColor))
                 .cornerRadius(8)
@@ -174,8 +190,6 @@ struct QuickTestView: View {
     let model: ModelItem
     @EnvironmentObject var runner: BackendRunnerManager
     @State private var promptText: String = "Hello! Please confirm you are working in one sentence."
-    @State private var responseText: String = ""
-    @State private var isTesting: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -199,24 +213,26 @@ struct QuickTestView: View {
                 HStack {
                     TextField("Test Prompt", text: $promptText)
                         .textFieldStyle(.roundedBorder)
-                    Button(action: sendTestPing) {
-                        if isTesting {
+                    Button(action: {
+                        runner.sendTestPing(modelName: model.name, promptText: promptText)
+                    }) {
+                        if runner.isPinging {
                             ProgressView().controlSize(.small)
                         } else {
                             Label("Send Ping", systemImage: "paperplane.fill")
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isTesting || promptText.isEmpty)
+                    .disabled(runner.isPinging || promptText.isEmpty)
                 }
 
-                if !responseText.isEmpty {
+                if !runner.lastPingResponse.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Model Response:")
                             .font(.caption.bold())
                             .foregroundColor(.secondary)
                         ScrollView {
-                            Text(responseText)
+                            Text(runner.lastPingResponse)
                                 .font(.system(.body, design: .monospaced))
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -229,48 +245,5 @@ struct QuickTestView: View {
             }
         }
         .padding(.vertical, 8)
-    }
-
-    private func sendTestPing() {
-        guard let _ = runner.activeModel else { return }
-        isTesting = true
-        responseText = "Sending test ping to http://127.0.0.1:\(runner.port)/v1/chat/completions..."
-
-        let url = URL(string: "http://127.0.0.1:\(runner.port)/v1/chat/completions")!
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let payload: [String: Any] = [
-            "model": model.name,
-            "messages": [["role": "user", "content": promptText]],
-            "max_tokens": 64
-        ]
-        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-
-        Task {
-            do {
-                let (data, _) = try await URLSession.shared.data(for: req)
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let choices = json["choices"] as? [[String: Any]],
-                   let first = choices.first,
-                   let msg = first["message"] as? [String: Any],
-                   let content = msg["content"] as? String {
-                    await MainActor.run {
-                        responseText = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                        isTesting = false
-                    }
-                } else {
-                    await MainActor.run {
-                        responseText = "Raw output: " + (String(data: data, encoding: .utf8) ?? "Unknown response")
-                        isTesting = false
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    responseText = "Error pinging model: \(error.localizedDescription)"
-                    isTesting = false
-                }
-            }
-        }
     }
 }
