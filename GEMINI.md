@@ -44,6 +44,23 @@
 - Bundle macOS App: `make app`
 - Run Application: `make run` or `open LocalMgr.app`
 
+## Release Management & Versioning Protocol
+
+When preparing a release, patch bump, or milestone completion, agents must execute the following synchronized release checklist:
+
+1. **plist & Build Number Synchronization**:
+   - Update `CFBundleShortVersionString` (semantic version, e.g., `0.1.1`) and increment `CFBundleVersion` (monotonically increasing integer build number, e.g., `2`) in `Info.plist`.
+2. **UI Version Parity**:
+   - Verify and update all user-facing version strings across the application (specifically the header subtitle in `SidebarView.swift`, e.g., `v0.1.1 • macOS Apple Silicon`).
+3. **Curated Changelog Protocol (`CHANGELOG.md`)**:
+   - Adhere strictly to **Keep a Changelog v1.1.0** and **Common Changelog** standards.
+   - Transition completed items from `## [Unreleased]` into a new version block: `## [X.Y.Z] - YYYY-MM-DD` with an italicized notice (e.g., `_Patch release (Build 2)..._`).
+   - Group entries into standard categories (`Added`, `Changed`, `Fixed`) with bold impact prefixes and issue IDs (`[localmgr-...]`).
+   - Update bottom comparison reference links (`[Unreleased]: ...compare/vX.Y.Z...HEAD` and `[X.Y.Z]: ...compare/vOLD...vX.Y.Z`).
+4. **Annotated Git Tagging**:
+   - Compile the app (`make app`) and commit the release preparation commit (e.g., `release(v0.1.1): bump patch version...`).
+   - Create an annotated git tag immediately following the commit: `git tag -a vX.Y.Z -m "Release vX.Y.Z (Build N)"`.
+
 ## Issue Tracking
 
 This project uses **bd (beads)** for issue tracking.
