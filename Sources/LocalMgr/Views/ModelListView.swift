@@ -3,15 +3,17 @@ import SwiftUI
 struct ModelListView: View {
     @EnvironmentObject var catalog: ModelCatalogService
     @EnvironmentObject var runner: BackendRunnerManager
+    @EnvironmentObject var readiness: EngineReadinessService
 
     var body: some View {
         List(selection: $catalog.selectedModel) {
             ForEach(catalog.filteredModels) { model in
+                let isReady = readiness.isReady(for: model.engineType)
                 NavigationLink(value: model) {
                     HStack(spacing: 12) {
                         Image(systemName: model.engineType.iconName)
                             .font(.title2)
-                            .foregroundColor(.accentColor)
+                            .foregroundColor(isReady ? .accentColor : .secondary)
                             .frame(width: 32)
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -37,6 +39,14 @@ struct ModelListView: View {
                                 Text(model.sizeFormatted)
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+
+                                Text(isReady ? "🟢 Ready" : "🔴 Missing Engine")
+                                    .font(.caption2.bold())
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(isReady ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
+                                    .foregroundColor(isReady ? .green : .red)
+                                    .cornerRadius(4)
                             }
                         }
 

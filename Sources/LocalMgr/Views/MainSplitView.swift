@@ -4,6 +4,7 @@ struct MainSplitView: View {
     @EnvironmentObject var catalog: ModelCatalogService
     @EnvironmentObject var runner: BackendRunnerManager
     @EnvironmentObject var monitor: SystemMonitorService
+    @EnvironmentObject var readiness: EngineReadinessService
 
     var body: some View {
         NavigationSplitView {

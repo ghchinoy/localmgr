@@ -62,10 +62,9 @@ class SystemMonitorService: ObservableObject {
         }
     }
 
-    func calculateFitScore(for model: ModelItem) -> MemoryFitScore {
-        let modelSize = model.sizeBytes
-        // Add ~20% overhead for KV cache and runtime activations
-        let estimatedRequired = Int64(Double(modelSize) * 1.25)
+    func calculateFitScore(for model: ModelItem, contextLength: Int = 8192) -> MemoryFitScore {
+        let breakdown = model.memoryPressure(forContextLength: contextLength)
+        let estimatedRequired = breakdown.totalRequiredBytes
         
         if estimatedRequired < freeRAMBytes {
             return .excellent

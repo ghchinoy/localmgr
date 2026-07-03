@@ -3,6 +3,7 @@ import SwiftUI
 struct SidebarView: View {
     @EnvironmentObject var catalog: ModelCatalogService
     @EnvironmentObject var runner: BackendRunnerManager
+    @EnvironmentObject var readiness: EngineReadinessService
 
     var body: some View {
         List {
@@ -40,15 +41,36 @@ struct SidebarView: View {
                         .foregroundColor(.secondary)
                 }
             }
+
+            Section(header: Text("Component Readiness")) {
+                ForEach(EngineType.allCases) { engine in
+                    let st = readiness.status(for: engine)
+                    HStack {
+                        Circle()
+                            .fill(st.isInstalled ? Color.green : Color.red)
+                            .frame(width: 6, height: 6)
+                        Text(engine.rawValue)
+                            .font(.caption)
+                        Spacer()
+                        Text(st.isInstalled ? "Ready" : "Missing")
+                            .font(.caption2.bold())
+                            .foregroundColor(st.isInstalled ? .green : .red)
+                    }
+                    .help(st.installHint)
+                }
+            }
         }
         .listStyle(.sidebar)
         .navigationTitle("LocalMgr")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button(action: { catalog.refreshCatalog() }) {
+                Button(action: { 
+                    catalog.refreshCatalog()
+                    readiness.refreshReadiness()
+                }) {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Refresh Vault Catalog")
+                .help("Refresh Vault Catalog & Component Status")
             }
         }
     }

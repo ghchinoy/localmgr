@@ -4,11 +4,25 @@ struct ModelInspectorView: View {
     let model: ModelItem
     @EnvironmentObject var runner: BackendRunnerManager
     @EnvironmentObject var monitor: SystemMonitorService
+    @EnvironmentObject var readiness: EngineReadinessService
 
     @State private var selectedTab: Int = 0
+    @State private var contextLengthSlider: Double = 8192
+
+    var isEngineReady: Bool {
+        readiness.isReady(for: model.engineType)
+    }
+
+    var st: EngineComponentStatus {
+        readiness.status(for: model.engineType)
+    }
+
+    var breakdown: MemoryPressureBreakdown {
+        model.memoryPressure(forContextLength: Int(contextLengthSlider))
+    }
 
     var fitScore: MemoryFitScore {
-        monitor.calculateFitScore(for: model)
+        monitor.calculateFitScore(for: model, contextLength: Int(contextLengthSlider))
     }
 
     var body: some View {
@@ -36,27 +50,70 @@ struct ModelInspectorView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
+                    .disabled(!isEngineReady)
                 }
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(10)
 
-            // Memory Fit Card
-            HStack {
-                Image(systemName: "memorychip")
-                    .font(.title2)
-                VStack(alignment: .leading) {
-                    Text("System Memory Fit Prediction")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(fitScore.rawValue)
-                        .font(.headline)
+            if !isEngineReady {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text("Prerequisite Missing: \(model.engineType.defaultBinaryName) is not installed on this machine. \(st.installHint)")
+                        .font(.subheadline)
                 }
-                Spacer()
-                Text("Available RAM: \(monitor.shortMemorySummary)")
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundColor(.secondary)
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.orange.opacity(0.15))
+                .cornerRadius(8)
+            }
+
+            // Precise Memory Pressure Card
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "memorychip")
+                        .font(.title2)
+                    VStack(alignment: .leading) {
+                        Text("Precise Memory Pressure & Fit Prediction")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(fitScore.rawValue)
+                            .font(.headline)
+                    }
+                    Spacer()
+                    Text("Available RAM: \(monitor.shortMemorySummary)")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
+
+                Divider()
+
+                HStack(spacing: 20) {
+                    VStack(alignment: .leading) {
+                        Text("Model Weights")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text(breakdown.formattedWeights)
+                            .font(.subheadline.bold())
+                    }
+                    VStack(alignment: .leading) {
+                        Text("KV Cache (\(Int(contextLengthSlider)) ctx)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text(breakdown.formattedKVCache)
+                            .font(.subheadline.bold())
+                    }
+                    VStack(alignment: .leading) {
+                        Text("Total Estimated RAM/VRAM")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text(breakdown.formattedTotal)
+                            .font(.subheadline.bold())
+                            .foregroundColor(fitScore == .thrashing ? .red : .primary)
+                    }
+                }
             }
             .padding()
             .background(Color.secondary.opacity(0.1))
@@ -71,6 +128,13 @@ struct ModelInspectorView: View {
 
             if selectedTab == 0 {
                 Form {
+                    Section(header: Text("Context & Execution Parameters")) {
+                        VStack(alignment: .leading) {
+                            Text("Target Context Length: \(Int(contextLengthSlider)) tokens")
+                            Slider(value: $contextLengthSlider, in: 2048...65536, step: 2048)
+                        }
+                    }
+
                     Section(header: Text("Model File Details")) {
                         LabeledContent("File Path", value: model.fileURL.path)
                         LabeledContent("Size", value: model.sizeFormatted)

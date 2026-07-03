@@ -87,7 +87,9 @@ class ModelCatalogService: ObservableObject {
                         sizeBytes: Int64(size),
                         engineType: .llamaCpp,
                         quantization: headerInfo.quantization,
-                        contextLength: headerInfo.contextLength
+                        contextLength: headerInfo.contextLength,
+                        layerCount: headerInfo.layerCount,
+                        headCountKV: headerInfo.headCountKV
                     )
                     scanned.append(item)
                 } else if fileURL.lastPathComponent == "config.json" {
@@ -103,7 +105,9 @@ class ModelCatalogService: ObservableObject {
                             sizeBytes: size,
                             engineType: .mlx,
                             quantization: "MLX-Safetensors",
-                            contextLength: 32768
+                            contextLength: 32768,
+                            layerCount: 32,
+                            headCountKV: 8
                         )
                         scanned.append(item)
                     }
