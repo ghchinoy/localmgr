@@ -106,6 +106,7 @@ class LocalAPIGateway: ObservableObject {
         let path = parts[1]
 
         await updateLastLog("\(method) \(path)")
+        await runner?.recordActivity()
 
         if method == "GET" && (path == "/v1/models" || path == "/models") {
             await handleModelsList(connection: connection)

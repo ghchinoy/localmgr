@@ -18,13 +18,37 @@ class BackendRunnerManager: ObservableObject {
     private var currentProcess: Process?
     private var pipe: Pipe?
     private weak var appSettings: AppSettings?
+    private var lastActivityDate: Date = Date()
+    private var idleTimer: Timer?
+
+    init() {
+        idleTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.checkIdleTimeout()
+            }
+        }
+    }
 
     func configure(settings: AppSettings) {
         self.appSettings = settings
     }
 
+    func recordActivity() {
+        self.lastActivityDate = Date()
+    }
+
+    private func checkIdleTimeout() {
+        guard status == .running, let settings = appSettings, settings.enableIdleUnload else { return }
+        let elapsedMinutes = Date().timeIntervalSince(lastActivityDate) / 60.0
+        if elapsedMinutes >= Double(settings.idleUnloadMinutes) {
+            self.logOutput.append("\n[Idle Reclaimer]: Zero inference requests for \(settings.idleUnloadMinutes)m. Unloading model weights from VRAM to preserve system RAM.\n")
+            stopCurrent()
+        }
+    }
+
     func startModel(_ model: ModelItem) {
         stopCurrent()
+        recordActivity()
         self.activeModel = model
         self.status = .starting
         self.logOutput.append("\n--- Starting \(model.name) via \(model.engineType.rawValue) ---\n")

@@ -24,6 +24,8 @@ class SystemMonitorService: ObservableObject {
     @Published var memoryFitScore: MemoryFitScore = .excellent
 
     private var timer: Timer?
+    private var pressureSource: DispatchSourceMemoryPressure?
+    private weak var runnerManager: BackendRunnerManager?
 
     var shortMemorySummary: String {
         let usedGB = Double(usedRAMBytes) / 1_073_741_824.0
@@ -34,11 +36,30 @@ class SystemMonitorService: ObservableObject {
     init() {
         totalRAMBytes = Int64(ProcessInfo.processInfo.physicalMemory)
         updateTelemetry()
+        setupPressureListener()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateTelemetry()
             }
         }
+    }
+
+    func configure(runner: BackendRunnerManager) {
+        self.runnerManager = runner
+    }
+
+    private func setupPressureListener() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                if self?.runnerManager?.status == .running {
+                    self?.runnerManager?.logOutput.append("\n[EMERGENCY PRESSURE RELEASE]: macOS reported CRITICAL memory pressure (thrashing). Stopping active runner instantly to protect system responsiveness.\n")
+                    self?.runnerManager?.stopCurrent()
+                }
+            }
+        }
+        source.resume()
+        self.pressureSource = source
     }
 
     func updateTelemetry() {

@@ -123,6 +123,7 @@ struct ModelInspectorView: View {
             Picker("", selection: $selectedTab) {
                 Text("Configuration & Info").tag(0)
                 Text("Live Logs").tag(1)
+                Text("Quick Test Ping").tag(2)
             }
             .pickerStyle(.segmented)
 
@@ -148,7 +149,7 @@ struct ModelInspectorView: View {
                     }
                 }
                 .formStyle(.grouped)
-            } else {
+            } else if selectedTab == 1 {
                 ScrollView {
                     Text(runner.logOutput.isEmpty ? "No logs generated yet. Start the model to view stdout/stderr." : runner.logOutput)
                         .font(.system(.caption, design: .monospaced))
@@ -157,10 +158,116 @@ struct ModelInspectorView: View {
                 }
                 .background(Color(NSColor.textBackgroundColor))
                 .cornerRadius(8)
+            } else {
+                QuickTestView(model: model)
             }
 
             Spacer()
         }
         .padding()
+    }
+}
+
+struct QuickTestView: View {
+    let model: ModelItem
+    @EnvironmentObject var runner: BackendRunnerManager
+    @State private var promptText: String = "Hello! Please confirm you are working in one sentence."
+    @State private var responseText: String = ""
+    @State private var isTesting: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if runner.activeModel?.id != model.id || runner.status != .running {
+                HStack {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(.blue)
+                    Text("Start this model runner above to send a quick verification ping.")
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.blue.opacity(0.12))
+                .cornerRadius(8)
+            } else {
+                Text("Verify Model Readiness")
+                    .font(.headline)
+                Text("Send a lightweight 64-token ping directly to port \(String(runner.port)) to verify weights initialized properly before connecting external IDEs.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    TextField("Test Prompt", text: $promptText)
+                        .textFieldStyle(.roundedBorder)
+                    Button(action: sendTestPing) {
+                        if isTesting {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Send Ping", systemImage: "paperplane.fill")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isTesting || promptText.isEmpty)
+                }
+
+                if !responseText.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Model Response:")
+                            .font(.caption.bold())
+                            .foregroundColor(.secondary)
+                        ScrollView {
+                            Text(responseText)
+                                .font(.system(.body, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding()
+                    .background(Color(NSColor.textBackgroundColor))
+                    .cornerRadius(8)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func sendTestPing() {
+        guard let _ = runner.activeModel else { return }
+        isTesting = true
+        responseText = "Sending test ping to http://127.0.0.1:\(runner.port)/v1/chat/completions..."
+
+        let url = URL(string: "http://127.0.0.1:\(runner.port)/v1/chat/completions")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let payload: [String: Any] = [
+            "model": model.name,
+            "messages": [["role": "user", "content": promptText]],
+            "max_tokens": 64
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(for: req)
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let choices = json["choices"] as? [[String: Any]],
+                   let first = choices.first,
+                   let msg = first["message"] as? [String: Any],
+                   let content = msg["content"] as? String {
+                    await MainActor.run {
+                        responseText = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                        isTesting = false
+                    }
+                } else {
+                    await MainActor.run {
+                        responseText = "Raw output: " + (String(data: data, encoding: .utf8) ?? "Unknown response")
+                        isTesting = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    responseText = "Error pinging model: \(error.localizedDescription)"
+                    isTesting = false
+                }
+            }
+        }
     }
 }

@@ -21,6 +21,7 @@ struct LocalMgrApp: App {
                 .frame(minWidth: 950, minHeight: 600)
                 .onAppear {
                     runnerManager.configure(settings: appSettings)
+                    monitorService.configure(runner: runnerManager)
                     gateway.configure(catalog: catalogService, runner: runnerManager)
                 }
         }
