@@ -71,8 +71,8 @@ class BackendRunnerManager: ObservableObject {
         case .llamaCpp:
             if autoTuneEnabled {
                 let profile = HardwareAutoTuner.detectProfile(physicalMemoryBytes: Int64(ProcessInfo.processInfo.physicalMemory))
-                self.logOutput.append("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Injecting -ngl \(profile.recommendedGPULayers), --flash-attn, ctx \(profile.maxSafeContext)\n")
-                args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "\(profile.recommendedGPULayers)", "-c", "\(min(defaultCtx, profile.maxSafeContext))", "--flash-attn"]
+                self.logOutput.append("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Injecting -ngl \(profile.recommendedGPULayers), --flash-attn on, ctx \(profile.maxSafeContext)\n")
+                args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "\(profile.recommendedGPULayers)", "-c", "\(min(defaultCtx, profile.maxSafeContext))", "--flash-attn", "on"]
             } else {
                 self.logOutput.append("[Hardware Auto-Tuner]: Opted out in Settings. Using manual flags (-ngl 99, ctx \(defaultCtx))\n")
                 args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "99", "-c", "\(defaultCtx)"]
@@ -110,6 +110,22 @@ class BackendRunnerManager: ObservableObject {
                         self?.status = .running
                     }
                 }
+            }
+        }
+
+        process.terminationHandler = { [weak self] proc in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let code = proc.terminationStatus
+                if code != 0 {
+                    self.status = .error
+                    self.logOutput.append("\n[Runner process terminated unexpectedly with exit code \(code)]\n")
+                } else {
+                    self.status = .stopped
+                    self.logOutput.append("\n[Runner process exited cleanly]\n")
+                }
+                self.currentProcess = nil
+                self.activeModel = nil
             }
         }
 

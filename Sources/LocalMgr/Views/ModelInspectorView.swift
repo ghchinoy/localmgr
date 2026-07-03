@@ -154,6 +154,7 @@ struct ModelInspectorView: View {
                 ScrollView {
                     Text(runner.logOutput.isEmpty ? "No logs generated yet. Start the model to view stdout/stderr." : runner.logOutput)
                         .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
                 }
@@ -217,6 +218,7 @@ struct QuickTestView: View {
                         ScrollView {
                             Text(responseText)
                                 .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
