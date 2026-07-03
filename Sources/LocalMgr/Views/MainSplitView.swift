@@ -73,5 +73,8 @@ struct MainSplitView: View {
         .sheet(isPresented: $showHubSheet) {
             HubDiscoveryView()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenHubDiscovery"))) { _ in
+            showHubSheet = true
+        }
     }
 }

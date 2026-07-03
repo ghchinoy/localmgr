@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct LocalMgrApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var catalogService = ModelCatalogService()
     @StateObject private var runnerManager = BackendRunnerManager()
     @StateObject private var monitorService = SystemMonitorService()
@@ -24,6 +25,8 @@ struct LocalMgrApp: App {
                 .environmentObject(hfClient)
                 .frame(minWidth: 950, minHeight: 600)
                 .onAppear {
+                    appDelegate.runnerManager = runnerManager
+                    appDelegate.catalogService = catalogService
                     runnerManager.configure(settings: appSettings)
                     monitorService.configure(runner: runnerManager)
                     gateway.configure(catalog: catalogService, runner: runnerManager, settings: appSettings)
@@ -40,6 +43,28 @@ struct LocalMgrApp: App {
                     catalogService.promptAddFolder()
                 }
                 .keyboardShortcut("o", modifiers: [.command])
+            }
+            CommandMenu("Models") {
+                Button("Start Active / Last Runner") {
+                    if let lastID = runnerManager.lastRunModelID, let model = catalogService.models.first(where: { $0.id == lastID }) ?? runnerManager.activeModel {
+                        runnerManager.startModel(model)
+                    }
+                }
+                .keyboardShortcut("r", modifiers: [.command])
+                .disabled(runnerManager.status == .running || runnerManager.status == .starting)
+
+                Button("Stop Active Runner") {
+                    runnerManager.stopCurrent()
+                }
+                .keyboardShortcut(".", modifiers: [.command])
+                .disabled(runnerManager.status != .running && runnerManager.status != .starting)
+
+                Divider()
+
+                Button("Discover Hub Models...") {
+                    NotificationCenter.default.post(name: NSNotification.Name("OpenHubDiscovery"), object: nil)
+                }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
             }
         }
 

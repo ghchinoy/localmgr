@@ -44,6 +44,7 @@ struct ModelInspectorView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
+                    .keyboardShortcut(".", modifiers: [.command])
                 } else {
                     Button(action: { runner.startModel(model) }) {
                         Label("Start Runner", systemImage: "play.fill")
@@ -51,6 +52,7 @@ struct ModelInspectorView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
                     .disabled(!isEngineReady)
+                    .keyboardShortcut("r", modifiers: [.command])
                 }
             }
             .padding()

@@ -13,6 +13,7 @@ struct HubDiscoveryView: View {
     @State private var selectedRepoID: String?
     @State private var selectedFilter: ModelCatalogService.ModelFilterCategory = .all
     @State private var targetDestinationURL: URL = URL(fileURLWithPath: "/")
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +35,7 @@ struct HubDiscoveryView: View {
                 HStack {
                     TextField("Search models (e.g. 'gemma 2', 'llama 3', 'kokoro')...", text: $searchQuery)
                         .textFieldStyle(.roundedBorder)
+                        .focused($isSearchFocused)
                         .onSubmit {
                             Task { await hfClient.searchModels(query: searchQuery, filterFormat: selectedFilter) }
                         }
@@ -213,6 +215,7 @@ struct HubDiscoveryView: View {
         }
         .frame(width: 880, height: 620)
         .onAppear {
+            isSearchFocused = true
             targetDestinationURL = appSettings.resolvedDownloadURL
             if !catalog.folders.contains(appSettings.resolvedDownloadURL) {
                 catalog.addFolder(appSettings.resolvedDownloadURL)
