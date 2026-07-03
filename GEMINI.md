@@ -11,9 +11,12 @@
 ### Supported Engines & Binaries
 - **`llama-server`**: GGUF LLMs, dynamic port allocation, `-ngl 99` Metal offload, Flash Attention.
 - **`mlx_lm.server`**: MLX Safetensors, native Apple Silicon zero-copy unified memory sharing.
-- **`litert-lm`**: Google AI Edge LiteRT (`.tflite` / `.task`) Metal backend execution.
+- **`litert-lm` / `litert-benchmark`**: Google AI Edge LiteRT (`.tflite` / `.task`) Metal backend execution.
 - **`kokoro-server`**: High-speed local ONNX / Rust Text-to-Speech (TTS).
-- *Resolution Policy*: Binaries are first probed in system `$PATH`, Homebrew (`/opt/homebrew/bin`), and conda/pip environments, with automatic fallback to `~/Library/Application Support/LocalMgr/Engines/`.
+- **Resolution Policy & Astral `uv` Preference**:
+  - The user prefers **Astral `uv`** (`uv tool install <pkg>`) over global `pip`.
+  - Binaries are probed across `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/*/bin/`, with automatic fallback to `~/Library/Application Support/LocalMgr/Engines/`.
+  - Account for binary aliases: for LiteRT, probe for both `litert-lm` and `litert-benchmark`.
 
 ### Key Services & Gateways
 - `ModelCatalogService`: Manages local folders via Security-Scoped Bookmarks and inspects `.gguf`, `.tflite`, and MLX headers.
@@ -31,6 +34,10 @@
 
 ### Settings & Live Combine Rebinding
 - **`@Published` vs. `@AppStorage`**: When a setting requires live Combine publisher subscriptions (such as dynamically rebinding network listening ports on the fly without restarting the application), declare the property as `@Published` backed by `UserDefaults.standard` inside `didSet`, rather than `@AppStorage` (which projects a `Binding<Value>` instead of a Combine `Publisher`).
+
+### App Icon & Asset Bundling
+- **Icon Generation (`sips` + `iconutil`)**: To convert PNG artwork into `AppIcon.icns`, generate `AppIcon.iconset` sizes (`16x16` through `512x512@2x`) using `sips` and compile with `iconutil -c icns`. Ensure `CFBundleIconFile` is declared in `Info.plist` and run `touch LocalMgr.app` after bundling.
+- **Resource Path Resolution**: When loading image resources in SwiftUI from an SPM app bundle, resolve paths using `Bundle.main.path(forResource:ofType:) ?? Bundle.main.bundlePath.appending("/Contents/Resources/<file>")`.
 
 ## Build & Run Commands
 - Compile release build: `make build` or `swift build -c release`
