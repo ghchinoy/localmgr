@@ -9,6 +9,7 @@ struct LocalMgrApp: App {
     @StateObject private var gateway = LocalAPIGateway()
     @StateObject private var appSettings = AppSettings()
     @StateObject private var downloader = HubDownloaderService()
+    @StateObject private var hfClient = HuggingFaceAPIClient()
 
     var body: some Scene {
         WindowGroup {
@@ -20,11 +21,15 @@ struct LocalMgrApp: App {
                 .environmentObject(gateway)
                 .environmentObject(appSettings)
                 .environmentObject(downloader)
+                .environmentObject(hfClient)
                 .frame(minWidth: 950, minHeight: 600)
                 .onAppear {
                     runnerManager.configure(settings: appSettings)
                     monitorService.configure(runner: runnerManager)
                     gateway.configure(catalog: catalogService, runner: runnerManager, settings: appSettings)
+                    if !catalogService.folders.contains(appSettings.resolvedDownloadURL) {
+                        catalogService.addFolder(appSettings.resolvedDownloadURL)
+                    }
                 }
         }
         .windowStyle(.hiddenTitleBar)
@@ -51,6 +56,7 @@ struct LocalMgrApp: App {
                 .environmentObject(readinessService)
                 .environmentObject(gateway)
                 .environmentObject(appSettings)
+                .environmentObject(downloader)
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "cpu")

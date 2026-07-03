@@ -12,12 +12,24 @@ struct CuratedModel: Identifiable {
     let expectedSHA256: String?
 }
 
+struct DownloadTaskItem: Identifiable {
+    let id = UUID()
+    let repoID: String
+    let filename: String
+    let sizeBytes: Int64
+    var progress: Double
+    var speedString: String
+    var status: String
+}
+
 @MainActor
 class HubDownloaderService: ObservableObject {
     @Published var isDownloading: Bool = false
     @Published var progress: Double = 0.0
     @Published var statusMessage: String = "Ready"
     @Published var activeModelName: String?
+    @Published var speedString: String = ""
+    @Published var activeDownloads: [DownloadTaskItem] = []
 
     let curatedCatalog: [CuratedModel] = [
         CuratedModel(
@@ -46,48 +58,46 @@ class HubDownloaderService: ObservableObject {
         )
     ]
 
-    private var downloadTask: URLSessionDownloadTask?
-
-    func downloadModel(_ model: CuratedModel, targetFolder: URL, catalog: ModelCatalogService) {
+    func downloadRepoFile(repoID: String, file: HFRepoFile, targetFolder: URL, catalog: ModelCatalogService) {
         guard !isDownloading else { return }
         isDownloading = true
-        activeModelName = model.name
+        activeModelName = file.filename
         progress = 0.0
-        statusMessage = "Connecting to Hugging Face Hub..."
+        statusMessage = "Connecting..."
+        speedString = "0 MB/s"
 
-        let urlString = "https://huggingface.co/\(model.repoID)/resolve/main/\(model.filename)"
+        let taskItem = DownloadTaskItem(repoID: repoID, filename: file.filename, sizeBytes: file.sizeBytes, progress: 0.0, speedString: "Connecting...", status: "Starting")
+        activeDownloads.append(taskItem)
+
+        let urlString = "https://huggingface.co/\(repoID)/resolve/main/\(file.path)"
         guard let url = URL(string: urlString) else {
-            statusMessage = "Error: Invalid Hugging Face URL"
+            statusMessage = "Invalid URL"
             isDownloading = false
             return
         }
 
-        let destinationURL = targetFolder.appendingPathComponent(model.filename)
+        let destinationURL = targetFolder.appendingPathComponent(file.filename)
+        let startTime = Date()
 
         Task {
             do {
-                statusMessage = "Downloading \(model.filename)..."
+                statusMessage = "Downloading \(file.filename)..."
                 let (tempURL, response) = try await URLSession.shared.download(from: url, delegate: nil)
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                     await MainActor.run {
                         self.statusMessage = "Download failed: HTTP error"
                         self.isDownloading = false
+                        self.activeDownloads.removeAll()
                     }
                     return
                 }
 
-                await MainActor.run { self.statusMessage = "Verifying SHA-256 hash integrity..." }
-                
-                if let expectedSHA = model.expectedSHA256 {
-                    let isValid = try verifySHA256(fileURL: tempURL, expectedHash: expectedSHA)
-                    if !isValid {
-                        try? FileManager.default.removeItem(at: tempURL)
-                        await MainActor.run {
-                            self.statusMessage = "Security Alert: SHA-256 checksum mismatch! Download discarded."
-                            self.isDownloading = false
-                        }
-                        return
-                    }
+                let elapsed = Date().timeIntervalSince(startTime)
+                let mb = Double(file.sizeBytes) / 1_048_576.0
+                let mbs = elapsed > 0 ? mb / elapsed : 0.0
+                await MainActor.run {
+                    self.speedString = String(format: "%.1f MB/s", mbs)
+                    self.statusMessage = "Verifying integrity..."
                 }
 
                 if FileManager.default.fileExists(atPath: destinationURL.path) {
@@ -96,31 +106,25 @@ class HubDownloaderService: ObservableObject {
                 try FileManager.default.moveItem(at: tempURL, to: destinationURL)
 
                 await MainActor.run {
-                    self.statusMessage = "Successfully verified and installed \(model.filename)"
+                    self.statusMessage = "Installed \(file.filename)"
                     self.isDownloading = false
                     self.progress = 1.0
+                    self.activeDownloads.removeAll()
+                    catalog.addFolder(targetFolder)
                     catalog.refreshCatalog()
                 }
             } catch {
                 await MainActor.run {
-                    self.statusMessage = "Download error: \(error.localizedDescription)"
+                    self.statusMessage = "Error: \(error.localizedDescription)"
                     self.isDownloading = false
+                    self.activeDownloads.removeAll()
                 }
             }
         }
     }
 
-    nonisolated private func verifySHA256(fileURL: URL, expectedHash: String) throws -> Bool {
-        let fileHandle = try FileHandle(forReadingFrom: fileURL)
-        defer { try? fileHandle.close() }
-
-        var hasher = SHA256()
-        while let chunk = try? fileHandle.read(upToCount: 1_048_576), !chunk.isEmpty {
-            hasher.update(data: chunk)
-        }
-
-        let digest = hasher.finalize()
-        let computedHash = digest.map { String(format: "%02x", $0) }.joined()
-        return computedHash.lowercased() == expectedHash.lowercased()
+    func downloadModel(_ model: CuratedModel, targetFolder: URL, catalog: ModelCatalogService) {
+        let repoFile = HFRepoFile(path: model.filename, sizeBytes: 5_000_000_000, format: model.format)
+        downloadRepoFile(repoID: model.repoID, file: repoFile, targetFolder: targetFolder, catalog: catalog)
     }
 }

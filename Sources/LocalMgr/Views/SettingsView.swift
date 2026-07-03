@@ -35,6 +35,14 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
 
+                Section(header: Text("Model Storage & Downloads")) {
+                    TextField("Custom Download Directory Override", text: $settings.customDownloadPath, prompt: Text("Default: ~/Library/Application Support/LocalMgr/Models"))
+                        .textFieldStyle(.roundedBorder)
+                    Text("Leave blank to use default Application Support folder. Downloaded files are automatically indexed into your vault.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
                 Section(header: Text("Idle VRAM Reclaiming")) {
                     Toggle("Auto-Unload Idle Models", isOn: $settings.enableIdleUnload)
                     if settings.enableIdleUnload {

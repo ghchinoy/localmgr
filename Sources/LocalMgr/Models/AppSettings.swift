@@ -12,4 +12,14 @@ class AppSettings: ObservableObject {
             UserDefaults.standard.set(gatewayPort, forKey: "gatewayPort")
         }
     }
+    @AppStorage("customDownloadPath") var customDownloadPath: String = ""
+
+    var resolvedDownloadURL: URL {
+        if !customDownloadPath.isEmpty {
+            return URL(fileURLWithPath: customDownloadPath)
+        }
+        let defaultURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("LocalMgr/Models")
+        try? FileManager.default.createDirectory(at: defaultURL, withIntermediateDirectories: true)
+        return defaultURL
+    }
 }

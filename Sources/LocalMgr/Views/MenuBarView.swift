@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @EnvironmentObject var monitor: SystemMonitorService
     @EnvironmentObject var readiness: EngineReadinessService
     @EnvironmentObject var gateway: LocalAPIGateway
+    @EnvironmentObject var downloader: HubDownloaderService
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -26,6 +27,17 @@ struct MenuBarView: View {
                 Spacer()
                 Text(gateway.isRunning ? "🟢 Port \(String(gateway.port))" : "🔴 Offline")
                     .font(.caption.monospacedDigit())
+            }
+
+            if downloader.isDownloading {
+                Divider()
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("⬇ \(downloader.activeModelName ?? "Downloading") (\(downloader.speedString))")
+                        .font(.caption2.bold())
+                        .foregroundColor(.accentColor)
+                        .lineLimit(1)
+                }
             }
 
             if let active = runner.activeModel {
