@@ -6,7 +6,20 @@ struct ModelListView: View {
     @EnvironmentObject var readiness: EngineReadinessService
 
     var body: some View {
-        List(selection: $catalog.selectedModel) {
+        VStack(spacing: 0) {
+            Picker("Filter Format", selection: $catalog.selectedFilter) {
+                ForEach(ModelCatalogService.ModelFilterCategory.allCases) { cat in
+                    Text(cat.rawValue).tag(cat)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            List(selection: $catalog.selectedModel) {
             ForEach(catalog.filteredModels) { model in
                 let isReady = readiness.isReady(for: model.engineType)
                 NavigationLink(value: model) {
@@ -65,6 +78,7 @@ struct ModelListView: View {
                     .padding(.vertical, 4)
                 }
             }
+        }
         }
         .searchable(text: $catalog.searchText, prompt: "Search models...")
         .navigationTitle("Models (\(catalog.filteredModels.count))")

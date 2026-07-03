@@ -54,18 +54,27 @@ struct SidebarView: View {
             Section(header: Text("Active Runner")) {
                 if let active = runner.activeModel {
                     HStack {
-                        Circle()
-                            .fill(runner.status == .running ? Color.green : Color.orange)
-                            .frame(width: 8, height: 8)
-                        Text(active.name)
-                            .font(.subheadline)
-                            .lineLimit(1)
-                        Spacer()
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(runner.status == .running ? Color.green : Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text(active.name)
+                                .font(.subheadline)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            catalog.selectedModel = active
+                        }
+                        .help("Click to inspect active runner details & live logs")
+
                         Button(action: { runner.stopCurrent() }) {
                             Image(systemName: "stop.fill")
                                 .foregroundColor(.red)
                         }
                         .buttonStyle(.plain)
+                        .help("Stop active runner")
                     }
                 } else {
                     Text("No runner active")

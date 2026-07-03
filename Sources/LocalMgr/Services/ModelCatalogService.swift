@@ -4,18 +4,37 @@ import AppKit
 
 @MainActor
 class ModelCatalogService: ObservableObject {
+    enum ModelFilterCategory: String, CaseIterable, Identifiable {
+        case all = "All"
+        case gguf = "GGUF"
+        case mlx = "MLX"
+        case liteRT = "LiteRT"
+        case audio = "Audio/TTS"
+        var id: String { rawValue }
+    }
+
     @Published var folders: [URL] = []
     @Published var models: [ModelItem] = []
     @Published var selectedModel: ModelItem?
     @Published var searchText: String = ""
+    @Published var selectedFilter: ModelFilterCategory = .all
 
     private let bookmarksKey = "LocalMgrFolderBookmarks"
 
     var filteredModels: [ModelItem] {
-        if searchText.isEmpty {
-            return models
+        var list = models
+        switch selectedFilter {
+        case .all: break
+        case .gguf: list = list.filter { $0.format == .gguf }
+        case .mlx: list = list.filter { $0.format == .mlx }
+        case .liteRT: list = list.filter { $0.format == .liteRT }
+        case .audio: list = list.filter { $0.format == .onnx || $0.engineType == .kokoro }
         }
-        return models.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+
+        if !searchText.isEmpty {
+            list = list.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
+        return list
     }
 
     init() {
