@@ -79,6 +79,12 @@ An AI power user or developer who does not yet have model weights locally on the
 * **CUJ-R1: Next-Gen Gemma 4+ Execution via Lightweight SIMD Reference**
   * *Goal*: Running latest Gemma 4+ architectures via specialized CPU reference runners once upstream support ships.
   * *Mapped Issue*: `localmgr-e3b` (Roadmap P4 - Tracking `google/gemma.cpp`).
+* **CUJ-R2: Next-Gen Gateway Telemetry, Metrics & Benchmarks**
+  * *Goal*: Capturing real-time inference telemetry (TTFT, TPS speedometers), Apple Silicon energy metrics (`tok/Wh`), KV cache hit rates, and automated prompt matrix benchmarks.
+  * *Mapped Issue*: `localmgr-khk` (Roadmap P3 - Active Telemetry Backlog).
+* **CUJ-R3: Enterprise Ops & Hybrid Cloud Federation (DIY Local -> DIY Hosted)**
+  * *Goal*: Supporting the Ops persona across a scaling spectrum from local Mac workstations to shared Mac Studio racks and remote GKE/K8s clusters. Adopts Envoy AI Gateway Prometheus schema standards in native telemetry (`/v1/stats`), and provides an optional containerized Envoy sidecar mode for hybrid route management.
+  * *Mapped Issue*: `localmgr-l4q` (Roadmap P4 - Ops & Hybrid Federation).
 
 ---
 
