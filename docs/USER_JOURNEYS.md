@@ -19,7 +19,7 @@ An Apple Silicon developer or AI power user who has downloaded model weights (`.
 
 | Step | User Action / Expectation | Architectural Component | Mapped `bd` Issue ID | Current Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. Vault Discovery** | User points LocalMgr to external model folders (`~/Models/GGUF`, Hugging Face cache). App lists models with zero copying. | `ModelCatalogService`<br>(Security-Scoped Bookmarks) | `localmgr-r3p.2` | ● Completed / Closed |
+| **1. Vault Discovery & Refresh** | User attaches external folders (`~/Models/GGUF`). Can manually trigger `Cmd+Shift+R` or click UI refresh buttons to re-scan files. | `ModelCatalogService`<br>(Security-Scoped Bookmarks) | `localmgr-r3p.2`<br>`localmgr-yxi` | ● Completed / Closed |
 | **2. Prerequisite Check** | User inspects a model card and immediately sees if the required engine (`mlx_lm.server` or `llama-server`) is installed and ready, or missing. | `EngineReadinessService`<br>(PATH & Env Scanner) | `localmgr-odf.1`<br>`localmgr-odf.3` | ● Completed / Closed |
 | **3. Precise Pressure Prediction** | Before loading an 8B or 14B model, user views exact memory requirements broken down by weights + context length KV cache. | `GGUFHeaderParser`<br>& `SystemMonitorService` | `localmgr-odf.2` | ● Completed / Closed |
 | **4. Live Memory Check** | User sees live Apple Silicon RAM breakdown (Wired/Active/Free) and a Fit Badge (`🟢 Excellent Fit` vs `🔴 Exceeds RAM`). | `SystemMonitorService`<br>(Mach Host Telemetry) | `localmgr-r3p.3` | ● Completed / Closed |
@@ -36,7 +36,7 @@ A software engineer coding in Xcode or VS Code / Cursor who wants a single, reli
 
 | Step | User Action / Expectation | Architectural Component | Mapped `bd` Issue ID | Current Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. Gateway Connection** | User configures IDE / agent to point to `http://127.0.0.1:4891/v1`. | `LocalAPIGateway`<br>(Built-in Swift HTTP Server) | `localmgr-6vw` | ● Completed / Closed |
+| **1. Gateway Connection** | User configures IDE / agent to point to `http://127.0.0.1:4891/v1`. | `LocalAPIGateway`<br>(Built-in Swift HTTP Server) | `localmgr-6vw`<br>`localmgr-yxi` | ● Completed / Closed |
 | **2. On-Demand Launch** | API call requests `model: "cohere-mini"`. Gateway detects runner is stopped, wakes engine, and proxies request. | `LocalAPIGateway` + `BackendRunnerManager` | `localmgr-6vw` | ● Completed / Closed |
 | **3. Seamless Engine Swapping** | User swaps from a GGUF LLM (`llama-server`) to an MLX model (`mlx_lm.server`). API gateway port remains constant at `4891`. | `BackendRunnerManager` | `localmgr-6vw`<br>`localmgr-xl7` | ● Completed / Closed |
 
@@ -52,9 +52,9 @@ A heavy multitasking developer running local models alongside intensive compilat
 | Step | User Action / Expectation | Architectural Component | Mapped `bd` Issue ID | Current Status |
 | :--- | :--- | :--- | :--- | :--- |
 | **1. Chip Tier Auto-Tuning** | User launches model on an M3 Max (64GB). App auto-configures `-ngl 99`, `--flash-attn on`, and optimal context caps without manual tuning. | `HardwareAutoTuningService`<br>(`sysctlbyname("hw.model")`) | `localmgr-oi3`<br>`localmgr-9jg` | ● Completed / Closed |
-| **2. In-App Quick Test Ping** | User switches to Quick Test Ping tab in inspector and sends a 64-token verification prompt to confirm weights initialized before connecting IDEs. | `QuickTestView` + `BackendRunnerManager` | `localmgr-kdg` | ● Completed / Closed |
+| **2. In-App Quick Test Ping** | User switches to Quick Test Ping tab in inspector and sends a 256-token verification prompt, parsing `reasoning_content` for thinking models. | `QuickTestView` + `BackendRunnerManager` | `localmgr-kdg`<br>`localmgr-yxi` | ● Completed / Closed |
 | **3. Idle Reclaiming** | Model sits idle for 15 minutes while user reviews PRs. LocalMgr unloads weights from VRAM to free up memory. | `IdleTTLTimer` | `localmgr-wzu` | ● Completed / Closed |
-| **4. OS Pressure Protection** | Xcode build spikes RAM usage. LocalMgr catches macOS memory pressure alert and drains active runner before thrashing occurs. | `SystemMonitorService`<br>(`DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`) | `localmgr-wzu` | ● Completed / Closed |
+| **4. OS Pressure & Quit Protection** | LocalMgr catches kernel memory pressure alerts to drain active runners before swap thrashing occurs, and cleanly auto-terminates subprocesses upon application quit. | `SystemMonitorService`<br>& `AppDelegate` | `localmgr-wzu`<br>`localmgr-yxi` | ● Completed / Closed |
 
 ---
 
