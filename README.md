@@ -31,6 +31,18 @@ curl http://127.0.0.1:4891/v1/chat/completions \
   }'
 ```
 
+## Enterprise Observability & Telemetry (`curl` Examples)
+
+LocalMgr includes standardized, persistent observability endpoints built directly into the reverse proxy (`LocalAPIGateway`). Telemetry records (including token volume, generation speed `tok/s`, Time-to-First-Token `TTFT`, KV cache hit rates, and kernel thermal states) are stored continuously in `~/Library/Application Support/LocalMgr/Telemetry/history.jsonl` and can be inspected via the interactive **Ops Dashboard** (`Cmd+Shift+O`) or programmatically:
+
+```bash
+# 1. Scrape Prometheus text exposition metrics (/metrics)
+curl http://127.0.0.1:4891/metrics
+
+# 2. Query structured JSON live statistics and active runner state (/v1/stats or /health)
+curl http://127.0.0.1:4891/v1/stats
+```
+
 ## Model Storage & Vaults
 
 LocalMgr operates on a **Bring Your Own Folder (BYOF)** architecture:
@@ -67,13 +79,15 @@ uv tool install ai-edge-litert
 - Swift 6.0 toolchain / Xcode 16+
 
 ### Build & Run
-Compile and bundle the native macOS application:
+Compile, bundle, and install the native macOS application:
 ```bash
 make app
+make install
 make run
 ```
-Or open `LocalMgr.app` directly from Finder.
+Or open `/Applications/LocalMgr.app` directly from Finder.
 
 ## Documentation
 - [Architecture & UX Blueprint](docs/ARCHITECTURE_PLAN.md)
 - [Core User Journeys (CUJs) & Diátaxis Mapping](docs/USER_JOURNEYS.md)
+- [RFC 001: Envoy AI Gateway Hybrid Cloud Federation](docs/RFC_001_ENVOY_AI_GATEWAY_HYBRID_FEDERATION.md)

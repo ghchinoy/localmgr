@@ -74,20 +74,30 @@ An AI power user or developer who does not yet have model weights locally on the
 
 ---
 
+## CUJ-5: Enterprise Ops Telemetry Dashboard & Persistent History
+
+### User Persona & Primary Goal
+An AI engineering lead or Ops persona managing local Mac workstations or shared inference racks, wanting to inspect persistent historical metrics (`history.jsonl`), monitor lifetime token generation speeds and KV cache hit rates, evaluate models via an automated benchmark harness, and scrape standard Prometheus endpoints.
+
+### Journey Breakdown & Issue Tracking Mapping
+
+| Step | User Action / Expectation | Architectural Component | Mapped `bd` Issue ID | Current Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Persistent Metrics Recording** | Proxy stream completions log exact tokens, TTFT, TPS, KV hits, and thermal states continuously to disk without dropping UI frames. | `TelemetryStore`<br>(Append-only JSONL) | `localmgr-uej`<br>`localmgr-khk.3` | ● Completed / Closed |
+| **2. Standardized Prometheus Scrape** | External Prometheus or Grafana scraper queries `GET /metrics` and `/v1/stats` for exact Envoy-compatible telemetry counters. | `LocalAPIGateway`<br>(`/metrics`, `/v1/stats`) | `localmgr-khk.6`<br>`localmgr-khk.1` | ● Completed / Closed |
+| **3. Interactive Monitoring Dashboard** | User opens Ops Dashboard (`Cmd+Shift+O`) to view lifetime KPI cards, thermal health, and multi-column comparative model rankings. | `OpsDashboardView`<br>+ `SidebarView` | `localmgr-uej`<br>`localmgr-khk.2` | ● Completed / Closed |
+| **4. Automated Matrix Benchmarking** | User clicks "Run Benchmark Matrix" in dashboard to evaluate active runner on a standardized prompt, recording baseline scores to history. | `OpsDashboardView`<br>(Matrix Harness) | `localmgr-khk.4` | ● Completed / Closed |
+
+---
+
 ## Future Roadmap Journeys
 
 * **CUJ-R1: Next-Gen Gemma 4+ Execution via Lightweight SIMD Reference**
   * *Goal*: Running latest Gemma 4+ architectures via specialized CPU reference runners once upstream support ships.
   * *Mapped Issue*: `localmgr-e3b` (Roadmap P4 - Tracking `google/gemma.cpp`).
-* **CUJ-R2: Next-Gen Gateway Telemetry, Metrics & Benchmarks (Phase 1 Priority)**
-  * *Goal*: Capturing real-time inference telemetry (TTFT, TPS speedometers), Apple Silicon energy metrics (`tok/Wh`), KV cache hit rates, and automated prompt matrix benchmarks. Prioritizes implementing native OTel/Prometheus schema endpoints (`/metrics`, `/v1/stats`) directly in `LocalAPIGateway` as defined in [RFC 001](RFC_001_ENVOY_AI_GATEWAY_HYBRID_FEDERATION.md).
-  * *Mapped Issue*: `localmgr-khk` (Roadmap P3 - Active Telemetry Backlog).
-* **CUJ-5: Spotlight-Style Global Quick Prompt Panel**
+* **CUJ-R2: Spotlight-Style Global Quick Prompt Panel**
   * *Goal*: Floating Raycast/Spotlight-style input panel accessible via global hotkey (`Cmd+Shift+Space`) allowing developers to query their active local model from anywhere in macOS.
   * *Mapped Issue*: `localmgr-bx6` (Feature P3 - Quick Prompt Backlog).
-* **CUJ-6: Enterprise Ops Telemetry Dashboard & Persistent History**
-  * *Goal*: Persistent proxy metrics storage (`history.jsonl` in Application Support) and an interactive UI monitoring dashboard displaying accumulated lifetime requests, tokens, average TTFT, TPS speeds, KV cache hit percentages, and thermal states per model.
-  * *Mapped Issue*: `localmgr-uej` (Feature P2 - Active Ops Dashboard Sprint).
 * **CUJ-R3: Enterprise Ops & Hybrid Cloud Federation (DIY Local -> DIY Hosted)**
   * *Goal*: Supporting the Ops persona across a scaling spectrum from local Mac workstations to shared Mac Studio racks and remote GKE/K8s clusters as specified in [RFC 001](RFC_001_ENVOY_AI_GATEWAY_HYBRID_FEDERATION.md). Adopts Envoy AI Gateway Prometheus schema standards (`ai_gateway_llm_*`) in native telemetry, and provides an optional containerized Envoy sidecar deployment profile for hybrid route management.
   * *Mapped Issue*: `localmgr-l4q` & `localmgr-7j2` (Roadmap P4 - Ops & Hybrid Federation).

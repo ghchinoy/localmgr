@@ -51,8 +51,14 @@ By adopting key architectural patterns learned from open-source managers like Ja
 * **Storage Location Hierarchy**: Downloads default to `~/Library/Application Support/LocalMgr/Models/`, with custom overrides available in Settings and per-download vault destination pickers.
 
 ### F. Enterprise Ops & Hybrid Cloud Federation ([RFC 001](RFC_001_ENVOY_AI_GATEWAY_HYBRID_FEDERATION.md))
-* **Phase 1 Priority (Native Swift Telemetry Parity)**: Implements exact Envoy AI Gateway observability conventions (Prometheus counters `ai_gateway_llm_token_usage_total`, latency histograms `ai_gateway_llm_request_duration_seconds`, OTel spans) inside native `/metrics` and `/v1/stats` endpoints on `LocalAPIGateway` with zero container overhead.
+* **Phase 1 Priority (Native Swift Telemetry Parity - Completed in v0.4.0)**: Implements exact Envoy AI Gateway observability conventions (Prometheus counters `ai_gateway_llm_token_usage_total`, latency histograms `ai_gateway_llm_request_duration_seconds`, OTel spans) inside native `/metrics` and `/v1/stats` endpoints on `LocalAPIGateway` with zero container overhead.
 * **Phase 2 (Ops Sidecar Mode & Scaling Spectrum)**: Bridges standalone developer laptops with shared Mac Studio inference racks and remote GKE/K8s clusters, providing an optional containerized Envoy AI Gateway sidecar deployment profile (`envoyproxy/ai-gateway`) for hybrid cloud route failover and quota enforcement.
+
+### G. Enterprise Ops Telemetry Store & Monitoring Dashboard (CUJ-R2 / CUJ-6)
+* **Append-Only Persistent Storage**: Records every proxy completion event continuously to `~/Library/Application Support/LocalMgr/Telemetry/history.jsonl` using append-only `FileHandle` operations to ensure zero UI frame drops during high-speed token generation.
+* **Standardized Observability Metrics**: Exposes `GET /metrics` (Prometheus text exposition format) and `GET /v1/stats` (structured JSON) aligned with Envoy AI Gateway stat conventions (`ai_gateway_llm_requests_total`, `ai_gateway_llm_token_usage_total`, `ai_gateway_llm_upstream_health_status`).
+* **KV Cache & Thermal Accounting**: Parses `prompt_tokens_details.cached_tokens` to calculate prefix cache hit rates (`cached / prompt`) and correlates inference runs with live kernel thermal states (`ProcessInfo.processInfo.thermalState`).
+* **Interactive Ops Dashboard**: Dedicated UI panel (`Cmd+Shift+O`) displaying lifetime request/token cards, thermal health, per-model comparative rankings, and an automated **One-Click Benchmark Matrix** harness.
 
 ---
 
