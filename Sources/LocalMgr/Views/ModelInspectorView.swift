@@ -143,8 +143,8 @@ struct ModelInspectorView: View {
                         }
                     }
 
-                    Section(header: Text("Runner Settings (Port: \(runner.port))")) {
-                        Stepper("Port: \(runner.port)", value: $runner.port, in: 1024...65535)
+                    Section(header: Text("Runner Settings (Port: \(String(runner.port)))")) {
+                        Stepper("Port: \(String(runner.port))", value: $runner.port, in: 1024...65535)
                     }
                 }
                 .formStyle(.grouped)

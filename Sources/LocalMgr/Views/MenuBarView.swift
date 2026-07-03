@@ -24,7 +24,7 @@ struct MenuBarView: View {
             HStack {
                 Text("Gateway:")
                 Spacer()
-                Text(gateway.isRunning ? "🟢 Port \(gateway.port)" : "🔴 Offline")
+                Text(gateway.isRunning ? "🟢 Port \(String(gateway.port))" : "🔴 Offline")
                     .font(.caption.monospacedDigit())
             }
 

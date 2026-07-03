@@ -8,7 +8,7 @@ struct SidebarView: View {
 
     var body: some View {
         List {
-            Section(header: Text("API Gateway (Port \(gateway.port))")) {
+            Section(header: Text("API Gateway (Port \(String(gateway.port)))")) {
                 HStack {
                     Circle()
                         .fill(gateway.isRunning ? Color.green : Color.red)
@@ -28,8 +28,21 @@ struct SidebarView: View {
 
             Section(header: Text("Vault Locations")) {
                 ForEach(catalog.folders, id: \.self) { url in
-                    Label(url.lastPathComponent, systemImage: "folder.fill")
-                        .help(url.path)
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "folder.fill")
+                            .foregroundColor(.accentColor)
+                            .padding(.top, 2)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(url.lastPathComponent)
+                                .font(.body)
+                            Text(url.deletingLastPathComponent().path)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    .help(url.path)
                 }
                 Button(action: { catalog.promptAddFolder() }) {
                     Label("Add Folder...", systemImage: "plus.circle")
