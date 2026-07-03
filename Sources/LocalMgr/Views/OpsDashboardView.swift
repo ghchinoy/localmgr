@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OpsDashboardView: View {
+    @Environment(\.dismiss) var dismiss
     @EnvironmentObject var store: TelemetryStore
     @EnvironmentObject var runner: BackendRunnerManager
     @EnvironmentObject var catalog: ModelCatalogService
@@ -33,6 +34,12 @@ struct OpsDashboardView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.red)
+
+                    Button(action: { dismiss() }) {
+                        Label("Close", systemImage: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.escape, modifiers: [])
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))

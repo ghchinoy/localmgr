@@ -86,48 +86,76 @@ class HuggingFaceAPIClient: ObservableObject {
         repoFiles = []
         errorMessage = nil
 
-        let urlString = "https://huggingface.co/api/models/\(repoID)/tree/main"
-        guard let url = URL(string: urlString) else {
-            isLoadingFiles = false
-            return
+        var tokenHeader: String? = nil
+        if let envToken = ProcessInfo.processInfo.environment["HF_TOKEN"], !envToken.isEmpty {
+            tokenHeader = "Bearer \(envToken)"
+        } else {
+            let tokenPath = NSHomeDirectory() + "/.cache/huggingface/token"
+            if let cached = try? String(contentsOfFile: tokenPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !cached.isEmpty {
+                tokenHeader = "Bearer \(cached)"
+            }
         }
 
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 else {
-                errorMessage = "Could not inspect files in repository"
-                isLoadingFiles = false
-                return
-            }
+        // Try recursive tree first, fallback to /api/models siblings if tree fails or is empty
+        let urlStrings = [
+            "https://huggingface.co/api/models/\(repoID)/tree/main?recursive=true",
+            "https://huggingface.co/api/models/\(repoID)"
+        ]
 
-            if let jsonList = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                var extracted: [HFRepoFile] = []
-                for item in jsonList {
-                    guard let path = item["path"] as? String else { continue }
-                    let size = item["size"] as? Int64 ?? 0
-                    let ext = (path as NSString).pathExtension.lowercased()
+        var extracted: [HFRepoFile] = []
 
-                    let format: ModelFormat
-                    if ext == "gguf" {
-                        format = .gguf
-                    } else if ext == "safetensors" {
-                        format = .mlx
-                    } else if ext == "tflite" || ext == "task" {
-                        format = .liteRT
-                    } else if ext == "onnx" {
-                        format = .onnx
-                    } else {
-                        continue
+        for urlString in urlStrings {
+            guard let url = URL(string: urlString) else { continue }
+            var req = URLRequest(url: url)
+            if let auth = tokenHeader { req.setValue(auth, forHTTPHeaderField: "Authorization") }
+
+            if let (data, response) = try? await URLSession.shared.data(for: req),
+               let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+                
+                if let jsonList = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    for item in jsonList {
+                        guard let path = item["path"] as? String else { continue }
+                        let size = item["size"] as? Int64 ?? 0
+                        if let file = parseHFRepoFile(path: path, size: size) {
+                            extracted.append(file)
+                        }
                     }
-
-                    extracted.append(HFRepoFile(path: path, sizeBytes: size, format: format))
+                } else if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let siblings = dict["siblings"] as? [[String: Any]] {
+                    for item in siblings {
+                        guard let path = item["rfilename"] as? String else { continue }
+                        let size = item["size"] as? Int64 ?? 0
+                        if let file = parseHFRepoFile(path: path, size: size) {
+                            extracted.append(file)
+                        }
+                    }
                 }
-                self.repoFiles = extracted
             }
-            self.isLoadingFiles = false
-        } catch {
-            self.errorMessage = "Inspection error: \(error.localizedDescription)"
-            self.isLoadingFiles = false
+            if !extracted.isEmpty { break }
         }
+
+        if extracted.isEmpty {
+            self.errorMessage = "No downloadable model weight files (.gguf, .safetensors, .tflite, .onnx) found in repository tree."
+        } else {
+            self.repoFiles = extracted
+        }
+        self.isLoadingFiles = false
+    }
+
+    private func parseHFRepoFile(path: String, size: Int64) -> HFRepoFile? {
+        let ext = (path as NSString).pathExtension.lowercased()
+        let format: ModelFormat
+        if ext == "gguf" {
+            format = .gguf
+        } else if ext == "safetensors" {
+            format = .mlx
+        } else if ext == "tflite" || ext == "task" {
+            format = .liteRT
+        } else if ext == "onnx" {
+            format = .onnx
+        } else {
+            return nil
+        }
+        return HFRepoFile(path: path, sizeBytes: size, format: format)
     }
 }

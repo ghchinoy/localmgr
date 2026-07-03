@@ -16,6 +16,13 @@ class LocalAPIGateway: ObservableObject {
     private weak var telemetry: TelemetryStore?
     private var cancellables = Set<AnyCancellable>()
 
+    private let proxySession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 1800.0 // 30 minutes
+        config.timeoutIntervalForResource = 3600.0 // 60 minutes
+        return URLSession(configuration: config)
+    }()
+
     func configure(catalog: ModelCatalogService, runner: BackendRunnerManager, settings: AppSettings, telemetry: TelemetryStore? = nil) {
         self.catalog = catalog
         self.runner = runner
@@ -273,10 +280,11 @@ class LocalAPIGateway: ObservableObject {
         proxyReq.httpMethod = "POST"
         proxyReq.httpBody = bodyData
         proxyReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        proxyReq.timeoutInterval = 1800.0
 
         let startTime = CFAbsoluteTimeGetCurrent()
         do {
-            let (respData, httpResp) = try await URLSession.shared.data(for: proxyReq)
+            let (respData, httpResp) = try await proxySession.data(for: proxyReq)
             let durationMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
             let statusCode = (httpResp as? HTTPURLResponse)?.statusCode ?? 200
 

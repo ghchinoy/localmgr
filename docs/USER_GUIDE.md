@@ -15,14 +15,14 @@ Welcome to the **LocalMgr User Guide**! While our `README.md` provides a high-le
 
 ---
 
-## Guide 1: Managing Local Model Vaults (BYOF) — CUJ-1
+## Guide 1: Managing Local Model Folders & Vaults (BYOF) — CUJ-1
 
 LocalMgr operates on a **Bring Your Own Folder (BYOF)** architecture. It never duplicates your multi-gigabyte `.gguf` or `.safetensors` files into hidden folders.
 
-### Step-by-Step: Attaching an External SSD or Model Folder
+### Step-by-Step: Attaching an Existing Model Directory
 1. Launch `/Applications/LocalMgr.app`.
 2. In the sidebar under **Model Vaults**, click the small `+` icon or open **Preferences** (`Cmd+,`).
-3. Click **Attach Vault Folder** and navigate to your external directory (e.g., `/Volumes/NVMe_Drive/LLMs` or `~/.cache/huggingface/hub`).
+3. Click **Attach Vault Folder** and navigate to any existing directory containing your model files (e.g., `~/Models`, `~/Downloads`, or `~/.cache/huggingface/hub`).
 4. Select **Grant Access**. LocalMgr stores a macOS Security-Scoped Bookmark so read/write access persists across restarts without copying data.
 
 ![Model Catalog & Format Filtering](screenshots/model_catalog_vaults.webp)
