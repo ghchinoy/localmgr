@@ -22,7 +22,7 @@ struct LocalMgrApp: App {
                 .onAppear {
                     runnerManager.configure(settings: appSettings)
                     monitorService.configure(runner: runnerManager)
-                    gateway.configure(catalog: catalogService, runner: runnerManager)
+                    gateway.configure(catalog: catalogService, runner: runnerManager, settings: appSettings)
                 }
         }
         .windowStyle(.hiddenTitleBar)

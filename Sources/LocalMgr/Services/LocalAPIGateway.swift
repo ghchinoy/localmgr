@@ -12,10 +12,25 @@ class LocalAPIGateway: ObservableObject {
     private var listener: NWListener?
     private weak var catalog: ModelCatalogService?
     private weak var runner: BackendRunnerManager?
+    private weak var appSettings: AppSettings?
+    private var cancellables = Set<AnyCancellable>()
 
-    func configure(catalog: ModelCatalogService, runner: BackendRunnerManager) {
+    func configure(catalog: ModelCatalogService, runner: BackendRunnerManager, settings: AppSettings) {
         self.catalog = catalog
         self.runner = runner
+        self.appSettings = settings
+        self.port = UInt16(settings.gatewayPort)
+
+        settings.$gatewayPort
+            .removeDuplicates()
+            .sink { [weak self] newPort in
+                guard let self = self, UInt16(newPort) != self.port else { return }
+                self.port = UInt16(newPort)
+                self.lastLog = "Rebinding gateway to port \(newPort)..."
+                self.startListening()
+            }
+            .store(in: &cancellables)
+
         startListening()
     }
 

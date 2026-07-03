@@ -7,5 +7,9 @@ class AppSettings: ObservableObject {
     @AppStorage("defaultContextLength") var defaultContextLength: Int = 8192
     @AppStorage("enableIdleUnload") var enableIdleUnload: Bool = true
     @AppStorage("idleUnloadMinutes") var idleUnloadMinutes: Int = 15
-    @AppStorage("gatewayPort") var gatewayPort: Int = 4891
+    @Published var gatewayPort: Int = UserDefaults.standard.integer(forKey: "gatewayPort") == 0 ? 4891 : UserDefaults.standard.integer(forKey: "gatewayPort") {
+        didSet {
+            UserDefaults.standard.set(gatewayPort, forKey: "gatewayPort")
+        }
+    }
 }

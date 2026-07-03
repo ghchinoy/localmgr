@@ -30,7 +30,7 @@ struct SettingsView: View {
             Form {
                 Section(header: Text("API Gateway Configuration")) {
                     Stepper("Gateway Listening Port: \(String(settings.gatewayPort))", value: $settings.gatewayPort, in: 1024...65535)
-                    Text("Restart LocalMgr after changing the gateway port.")
+                    Text("Changes take effect immediately — the API Gateway rebinds to the new port automatically.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
