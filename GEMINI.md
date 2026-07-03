@@ -48,6 +48,9 @@
 ### Subprocess Lifecycle & App Exit Protection
 - **Orphan Prevention**: Subprocesses spawned via `Process` (`NSTask`) survive parent GUI termination by default. Always maintain a hook in `AppDelegate.applicationWillTerminate(_:)` that invokes `runnerManager.stopCurrent()` (controlled via an explicit user setting in `AppSettings`) so lingering engine servers (`llama-server`, `mlx_lm.server`) never orphan local network sockets.
 
+### Inference Routing Guardrails
+- **Fast-Fail on Active Conflicts**: When implementing local reverse proxies over single-model engines (`llama-server`, `mlx_lm.server`), never auto-swap models if another runner session is actively running. If an incoming API request (`/v1/chat/completions`) specifies a model that differs from the currently active runner, return an explicit HTTP `409 Conflict` (unless requested as `"default"` or `"local"`) to protect active developer sessions and prevent VRAM swap thrashing.
+
 ## Build & Run Commands
 - Compile release build: `make build` or `swift build -c release`
 - Bundle macOS App: `make app`
