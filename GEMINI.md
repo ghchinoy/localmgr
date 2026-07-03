@@ -76,6 +76,12 @@ When preparing a release, patch bump, or milestone completion, agents must execu
 4. **Annotated Git Tagging**:
    - Compile the app (`make app`) and commit the release preparation commit (e.g., `release(v0.1.1): bump patch version...`).
    - Create an annotated git tag immediately following the commit: `git tag -a vX.Y.Z -m "Release vX.Y.Z (Build N)"`.
+5. **Documentation Audit & Synchronization Protocol**:
+   - At the conclusion of a feature sprint or milestone release, agents must verify that architectural blueprints and user-facing docs reflect implemented code. To conserve context and ensure thoroughness, **delegate this audit to a subagent (`self` or `research`)** executing a 4-point sweep:
+     1. **`README.md` Parity**: Verify all new user-facing HTTP endpoints (`/metrics`, `/v1/stats`), CLI commands, and installation steps (`make install`) are documented with concrete examples.
+     2. **`USER_JOURNEYS.md` Promotion**: Move completed features from `## Future Roadmap Journeys` up into `## Implemented Core User Journeys`, updating mapped `bd` issue IDs and status badges (`● Completed / Closed`).
+     3. **`ARCHITECTURE_PLAN.md` Alignment**: Register new storage directories (`history.jsonl`), Swift actors/services (`TelemetryStore`), and gateway routing rules inside the architecture breakdown. Ensure all media links (e.g., `architecture.webp`) use valid relative paths inside `docs/`.
+     4. **Issue Tracker Parity**: Ensure all completed tasks and epics are closed in `beads` (`bd close <id>`) prior to tagging the release.
 
 ## Issue Tracking
 

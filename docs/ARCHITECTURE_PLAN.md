@@ -13,7 +13,7 @@ By adopting key architectural patterns learned from open-source managers like Ja
 
 ### System Architecture Diagram
 
-![LocalMgr System Architecture](/Users/ghchinoy/projects/localmgr/docs/architecture.webp)
+![LocalMgr System Architecture](architecture.webp)
 
 > [!NOTE]
 > For a detailed mapping of user goals to architectural components, issue tracker IDs (`bd`), and Diátaxis guides, see **[docs/USER_JOURNEYS.md](/Users/ghchinoy/projects/localmgr/docs/USER_JOURNEYS.md)**.
