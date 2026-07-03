@@ -92,6 +92,20 @@ class ModelCatalogService: ObservableObject {
                         headCountKV: headerInfo.headCountKV
                     )
                     scanned.append(item)
+                } else if fileURL.pathExtension.lowercased() == "tflite" || fileURL.pathExtension.lowercased() == "task" {
+                    let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                    let item = ModelItem(
+                        name: fileURL.deletingPathExtension().lastPathComponent,
+                        fileURL: fileURL,
+                        format: .liteRT,
+                        sizeBytes: Int64(size),
+                        engineType: .liteRT,
+                        quantization: "LiteRT-Quantized",
+                        contextLength: 4096,
+                        layerCount: 28,
+                        headCountKV: 8
+                    )
+                    scanned.append(item)
                 } else if fileURL.lastPathComponent == "config.json" {
                     // Check if parent directory represents an MLX package
                     let parentURL = fileURL.deletingLastPathComponent()

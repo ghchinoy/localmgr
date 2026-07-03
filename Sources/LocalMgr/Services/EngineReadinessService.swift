@@ -49,6 +49,7 @@ class EngineReadinessService: ObservableObject {
                 case .mlx: hint = "Install via: pip install mlx-lm"
                 case .kokoro: hint = "Install Kokoro server binary or place in App Support"
                 case .gemmaCpp: hint = "Compile gemma.cpp binary and place in App Support"
+                case .liteRT: hint = "Install via: pip install ai-edge-litert or place litert-lm binary in App Support"
                 }
                 statuses[engine] = EngineComponentStatus(
                     engineType: engine,

@@ -5,6 +5,7 @@ enum EngineType: String, CaseIterable, Codable, Identifiable {
     case mlx = "MLX Engine"
     case kokoro = "Kokoro TTS"
     case gemmaCpp = "gemma.cpp"
+    case liteRT = "LiteRT Engine"
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum EngineType: String, CaseIterable, Codable, Identifiable {
         case .mlx: return "mlx_lm.server"
         case .kokoro: return "kokoro-server"
         case .gemmaCpp: return "gemma"
+        case .liteRT: return "litert-lm"
         }
     }
 
@@ -23,6 +25,7 @@ enum EngineType: String, CaseIterable, Codable, Identifiable {
         case .mlx: return "applelogo"
         case .kokoro: return "waveform"
         case .gemmaCpp: return "sparkles"
+        case .liteRT: return "cube.transparent.fill"
         }
     }
 }
@@ -31,6 +34,7 @@ enum ModelFormat: String, Codable {
     case gguf = "GGUF"
     case mlx = "MLX Safetensors"
     case onnx = "ONNX Audio"
+    case liteRT = "LiteRT (.tflite)"
     case unknown = "Unknown"
 }
 

@@ -44,6 +44,8 @@ class BackendRunnerManager: ObservableObject {
             args = ["--model", model.fileURL.path, "--port", "\(port)"]
         case .gemmaCpp:
             args = ["--tokenizer", model.fileURL.path, "--compressed_weights", model.fileURL.path]
+        case .liteRT:
+            args = ["--model_path", model.fileURL.path, "--port", "\(port)", "--backend", "metal"]
         }
 
         process.arguments = args
