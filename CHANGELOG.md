@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-03
+
+_Minor release (Build 5) delivering persistent telemetry history, enterprise Ops monitoring dashboard, automated benchmark harness, and make install target._
+
+### Added
+- **Persistent Telemetry Store:** record proxy completion events to `~/Library/Application Support/LocalMgr/Telemetry/history.jsonl` surviving application restarts (`[localmgr-uej]`).
+- **Enterprise Ops Monitoring Dashboard:** add interactive `OpsDashboardView` (`Cmd+Shift+O`) aggregating lifetime requests, token volumes, average TTFT, generation speed (`tok/s`), and KV cache hit rate percentages per model (`[localmgr-uej]`, `[localmgr-khk.3]`).
+- **One-Click Benchmark Matrix:** provide in-dashboard evaluation harness firing standardized prompts against active runners and appending baseline telemetry directly into persistent history (`[localmgr-khk.4]`).
+- **Apple Silicon Thermal Correlation:** track and display live kernel thermal states (`ProcessInfo.processInfo.thermalState`) inside metrics records and dashboard headers (`[localmgr-khk.2]`).
+- **Makefile Install Target:** add `make install` target copying compiled bundles cleanly into `/Applications/LocalMgr.app`.
+
 ## [0.3.0] - 2026-07-03
 
 _Minor release (Build 4) delivering Phase 1 observability foundation, Prometheus metrics, structured telemetry, and routing conflict guardrails._
@@ -63,7 +74,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ghchinoy/localmgr/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ghchinoy/localmgr/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ghchinoy/localmgr/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ghchinoy/localmgr/compare/v0.1.0...v0.1.1
