@@ -40,8 +40,9 @@ By adopting key architectural patterns learned from open-source managers like Ja
   * **OS Pressure Hook**: Listens to macOS memory pressure events (`DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`). If the OS reports critical swap thrashing, LocalMgr instantly pauses or terminates background runners to restore system responsiveness.
 
 ### D. Multi-Backend Engine Orchestration & Hardware Auto-Tuning
-* **Apple Silicon Auto-Tuning**: Queries `sysctlbyname("hw.model")` and physical memory sizes to auto-configure optimal flags per chip tier (e.g., `-ngl 99`, `--flash-attn`, thread counts, and context caps for M1/M2/M3/M4 Pro/Max/Ultra).
-* **Unified Lifecycle Control**: Manages engine binary execution via `Process` (`NSTask`), dynamic port allocation, and pipe forwarding for live terminal stdout/stderr logs.
+* **Apple Silicon Auto-Tuning**: Queries `sysctlbyname("hw.model")` and physical memory sizes to auto-configure optimal flags per chip tier (e.g., `-ngl 99`, `--flash-attn on`, thread counts, and context caps for M1/M2/M3/M4 Pro/Max/Ultra).
+* **Unified Lifecycle & Log Control**: Manages engine binary execution via `Process` (`NSTask`), dynamic port allocation, and pipe forwarding for live terminal stdout/stderr logs with copyable text selection and strict per-model view isolation.
+* **Guaranteed In-App Verification**: Provides an interactive Quick Test Ping tab that sends lightweight 64-token prompts to active runners, storing responses directly on the main actor orchestrator to guarantee UI updates during high-frequency log streams.
 
 ### E. Hugging Face Hub Discovery & Global Background Downloader (CUJ-4)
 * **Dual Discovery Modes**: Supports live keyword searches against `https://huggingface.co/api/models` alongside direct URL/Repo ID paste fields.

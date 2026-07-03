@@ -6,11 +6,13 @@
 
 - **Bring Your Own Folder (BYOF)**: Attach existing external model directories (`~/Models/GGUF`, Hugging Face cache) via macOS Security-Scoped Bookmarks without copying or duplicating weights.
 - **Apple Silicon Hardware Telemetry**: Real-time monitoring of Wired, Active, and Free Unified Memory (`vm_stat`, `mach_host_basic_info`) with a **Predictive Fit Gauge** that warns before loading models that cause swap thrashing.
-- **Engine Readiness Scanner**: Automatically probes system PATHs, Homebrew, conda, and Application Support to detect installed execution binaries and displays clear `🟢 Ready` vs. `🔴 Missing Engine` badges.
+- **Engine Readiness Scanner**: Automatically probes system PATHs, Homebrew, conda, and Astral `uv` environments (`~/.local/bin`, `~/.local/share/uv/tools/`) to detect installed execution binaries with clear `🟢 Ready` vs. `🔴 Missing Engine` badges.
 - **Multi-Engine Execution**: First-class support for `llama.cpp` (GGUF), Apple `MLX` (.safetensors), Google `LiteRT-LM` (.tflite / AI Edge), and `Kokoro` audio TTS.
 - **Precise KV Cache Footprint**: Inspects GGUF binary headers for exact tensor and layer dimensions to compute combined static weight and dynamic KV cache memory pressure across context lengths.
-- **Unified Local API Gateway**: Built-in HTTP gateway (`http://127.0.0.1:4891/v1`) that transparently reverse-proxies OpenAI-compatible requests to whichever backend engine is active, with on-demand model warm-up.
+- **Unified Local API Gateway**: Built-in HTTP gateway (`http://127.0.0.1:4891/v1`) that transparently reverse-proxies OpenAI-compatible requests to whichever backend engine is active, with on-demand model warm-up and live port rebinding.
+- **Hardware Auto-Tuning & In-App Quick Ping**: Automatically configures optimal Apple Silicon flags (`-ngl 99`, `--flash-attn on`, context caps) per chip tier, and includes an interactive 64-token verification ping tab in the inspector.
 - **Hugging Face Hub Discovery & Background Downloader**: Dedicated discovery panel supporting keyword searches and direct URL pastes, format filters, pre-download RAM fit warnings, and persistent background transfers with SHA-256 verification.
+- **Native Preferences & Safety Nets**: Configurable Settings window (`Cmd+,`) allowing auto-tuning opt-out, custom download folder overrides, idle VRAM TTL unload timers, and macOS kernel memory pressure hooks (`DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`) to drain active runners before swap thrashing occurs.
 
 ## Model Storage & Vaults
 
@@ -20,20 +22,23 @@ LocalMgr operates on a **Bring Your Own Folder (BYOF)** architecture:
 
 ## Requirements & Tool Installation (TL;DR)
 
-LocalMgr discovers models and manages background engine subprocesses. To run specific model formats, install the required command-line engines using Homebrew or pip:
+LocalMgr discovers models and manages background engine subprocesses. To run specific model formats, install the required command-line engines using Astral `uv` (recommended), Homebrew, or pip:
 
 ```bash
 # 1. For GGUF models (llama-server)
 brew install llama.cpp
 
 # 2. For Apple Silicon native MLX models (.safetensors)
-pip install mlx-lm
+uv tool install mlx-lm
+# Or: pip install mlx-lm
 
 # 3. For Hugging Face Hub CLI integration
-pip install huggingface_hub[cli]
+uv tool install huggingface_hub
+# Or: pip install huggingface_hub[cli]
 
-# 4. For Google AI Edge LiteRT models (.tflite / litert-lm)
-pip install ai-edge-litert
+# 4. For Google AI Edge LiteRT models (.tflite / litert-benchmark)
+uv tool install ai-edge-litert
+# Or: pip install ai-edge-litert
 ```
 
 > **Tip**: If an engine binary isn't in your standard system `$PATH`, you can also place compiled binaries directly into `~/Library/Application Support/LocalMgr/Engines/`.
