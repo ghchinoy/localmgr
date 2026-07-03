@@ -43,6 +43,12 @@ By adopting key architectural patterns learned from open-source managers like Ja
 * **Apple Silicon Auto-Tuning**: Queries `sysctlbyname("hw.model")` and physical memory sizes to auto-configure optimal flags per chip tier (e.g., `-ngl 99`, `--flash-attn`, thread counts, and context caps for M1/M2/M3/M4 Pro/Max/Ultra).
 * **Unified Lifecycle Control**: Manages engine binary execution via `Process` (`NSTask`), dynamic port allocation, and pipe forwarding for live terminal stdout/stderr logs.
 
+### E. Hugging Face Hub Discovery & Global Background Downloader (CUJ-4)
+* **Dual Discovery Modes**: Supports live keyword searches against `https://huggingface.co/api/models` alongside direct URL/Repo ID paste fields.
+* **Pre-Download Memory Fit Verification**: Calculates exact RAM requirements for repository weight files before download begins, displaying live fit indicators (`🟢 Fits comfortably` vs `🔴 Exceeds RAM`).
+* **Global Background Transfer Engine**: Downloads persist independently when discovery panels are dismissed, showing real-time progress bars, speeds (MB/s), and ETA inside the main window toolbar and `MenuBarView`, complete with streaming SHA-256 integrity validation.
+* **Storage Location Hierarchy**: Downloads default to `~/Library/Application Support/LocalMgr/Models/`, with custom overrides available in Settings and per-download vault destination pickers.
+
 ---
 
 ## 3. Supported Model Backends

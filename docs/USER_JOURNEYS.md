@@ -57,6 +57,22 @@ A heavy multitasking developer running local models alongside intensive compilat
 
 ---
 
+## CUJ-4: Hugging Face Hub Discovery & Background Downloader
+
+### User Persona & Primary Goal
+An AI power user or developer who does not yet have model weights locally on their machine, wanting to discover, inspect, verify fit, and download models from Hugging Face Hub directly inside LocalMgr without blocking UI workflows or overflowing system RAM.
+
+### Journey Breakdown & Issue Tracking Mapping
+
+| Step | User Action / Expectation | Architectural Component | Mapped `bd` Issue ID | Current Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Hub Discovery Modal** | User opens Hub Discovery sheet (`Cmd+Shift+H`). Searches by keyword (`"gemma 2"`) or pastes a direct URL/Repo ID (`bartowski/Llama-3.2-8B-GGUF`). | `HubDiscoveryView` + `HuggingFaceAPIClient` | `localmgr-wja.1`<br>`localmgr-wja.2` | ○ P2 Backlog |
+| **2. Format & Fit Inspection** | User filters tree by format (`GGUF`, `MLX`, `LiteRT`) and inspects file weights. Each file displays a pre-download RAM Fit Badge (`🟢 Fits comfortably` vs `🔴 Exceeds RAM`). | `HuggingFaceAPIClient` + `SystemMonitorService` | `localmgr-wja.2` | ○ P2 Backlog |
+| **3. Destination & Storage Selection** | User picks destination vault (defaulting to `~/Library/Application Support/LocalMgr/Models/` or custom bookmarked folder in Settings). | `ModelCatalogService` + `AppSettings` | `localmgr-wja.4` | ○ P2 Backlog |
+| **4. Background Transfer & Verification** | User clicks Download, closes sheet to manage runners. Global progress bar/badge in main toolbar and `MenuBarView` shows live MB/s, ETA, and verifies SHA-256 upon completion. | `HubDownloaderService` (Global Task) | `localmgr-wja.3` | ○ P2 Backlog |
+
+---
+
 ## Future Roadmap Journeys
 
 * **CUJ-R1: Next-Gen Gemma 4+ Execution via Lightweight SIMD Reference**
@@ -71,11 +87,14 @@ When building public-facing docs for LocalMgr, these CUJs will structure the fou
 
 1. **Tutorials (Learning-oriented)**:
    * *Guide*: "Getting Started with Your First Local Model Vault on macOS" (Derived from CUJ-1 Steps 1, 4, 5).
+   * *Guide*: "Finding, Checking Fit, and Downloading Models from Hugging Face Hub" (Derived from CUJ-4 Steps 1, 2, 4).
 2. **How-To Guides (Problem-oriented)**:
    * *Guide*: "How to Install and Configure MLX and Llama.cpp CLI Binaries" (Derived from CUJ-1 Step 2).
    * *Guide*: "Connecting Cursor and Xcode to LocalMgr's Unified API Gateway" (Derived from CUJ-2).
+   * *Guide*: "Configuring Custom External Drive Storage for Downloaded Models" (Derived from CUJ-4 Step 3).
 3. **Reference (Information-oriented)**:
-   * *Guide*: "Supported GGUF & MLX Header Specifications and Quantization Table" (Derived from CUJ-1 Step 3).
+   * *Guide*: "Supported GGUF, MLX, and LiteRT Header Specifications" (Derived from CUJ-1 Step 3).
    * *Guide*: "Apple Silicon Hardware Auto-Tuning Profiles & Flags Matrix" (Derived from CUJ-3 Step 1).
+   * *Guide*: "Hugging Face Hub API Search Syntax & Format Tags" (Derived from CUJ-4 Step 1).
 4. **Explanation (Understanding-oriented)**:
    * *Guide*: "Understanding Apple Silicon Unified Memory Telemetry, Page-Outs, and Fit Prediction" (Derived from CUJ-1 Step 4 & CUJ-3 Step 3).

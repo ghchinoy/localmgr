@@ -20,9 +20,10 @@ digraph LocalMgrArchitecture {
         color = "#94a3b8";
         fontcolor = "#1e293b";
         fontsize = 14;
-        Nav [label="NavigationSplitView\n(3-Column UI)", fillcolor="#e0f2fe"];
-        MenuBar [label="MenuBarExtra\n(Status Item & Telemetry)", fillcolor="#e0f2fe"];
-        Inspector [label="Model Inspector\n& Template Overrides", fillcolor="#e0f2fe"];
+        Nav [label="NavigationSplitView\n(3-Column UI & Format Filters)", fillcolor="#e0f2fe"];
+        MenuBar [label="MenuBarExtra\n(Status Item, Telemetry & Progress)", fillcolor="#e0f2fe"];
+        Inspector [label="Model Inspector\n& Quick Test Ping", fillcolor="#e0f2fe"];
+        HubPanel [label="Hub Discovery Modal\n(Keyword Search & URL Paste)", fillcolor="#e0f2fe"];
     }
 
     subgraph cluster_Core {
@@ -34,8 +35,9 @@ digraph LocalMgrArchitecture {
         Gateway [label="Unified Local API Gateway\n(Port 4891 Reverse Proxy & On-Demand Launch)", fillcolor="#f3e8ff", penwidth=2.0, color="#9333ea"];
         Catalog [label="ModelCatalogService\n(Security-Scoped Bookmarks & BYOF)", fillcolor="#dcfce7"];
         Orchestrator [label="BackendRunnerManager\n(Hardware Auto-Tuning & Subprocess Control)", fillcolor="#dcfce7"];
-        Monitor [label="SystemMonitorService\n(Mach Telemetry & Emergency Pressure Release)", fillcolor="#dcfce7"];
-        Downloader [label="HubDownloaderService\n(Chunked Transfers & SHA-256 Checksums)", fillcolor="#dcfce7"];
+        Monitor [label="SystemMonitorService\n(Mach Telemetry & Pre-Download Fit Gauge)", fillcolor="#dcfce7"];
+        Downloader [label="HubDownloaderService\n(Chunked Transfers, SHA-256 & Background Progress)", fillcolor="#dcfce7"];
+        HFClient [label="HuggingFaceAPIClient\n(REST Search & Tree Inspection)", fillcolor="#dcfce7"];
     }
 
     subgraph cluster_Backends {
@@ -46,8 +48,8 @@ digraph LocalMgrArchitecture {
         fontsize = 14;
         Llama [label="llama.cpp (llama-server)\nGGUF LLMs", fillcolor="#fef3c7"];
         MLX [label="MLX Engine (mlx_lm.server)\nApple Silicon .safetensors", fillcolor="#fef3c7"];
+        LiteRT [label="LiteRT Engine (litert-lm)\nGoogle AI Edge .tflite", fillcolor="#fef3c7"];
         Kokoro [label="Kokoro RS / ONNX\nFast 82M TTS Audio", fillcolor="#fef3c7"];
-        Gemma [label="gemma.cpp C++ Binary\nGemma Native", fillcolor="#fef3c7"];
     }
 
     Clients -> Gateway [label=" POST /v1/..."];
@@ -56,13 +58,17 @@ digraph LocalMgrArchitecture {
     Nav -> Catalog [dir=both];
     Nav -> Orchestrator [dir=both];
     MenuBar -> Monitor [dir=both];
+    MenuBar -> Downloader [dir=both];
     Inspector -> Orchestrator [dir=both];
+    HubPanel -> HFClient [dir=both];
+    HubPanel -> Downloader [dir=both];
 
+    HFClient -> Monitor [label=" Check Fit Before Download", style="dashed"];
     Monitor -> Orchestrator [label=" Memory Pressure / Idle TTL Unload", color="#ef4444", style="dashed"];
 
     Catalog -> Downloader [dir=both];
     Orchestrator -> Llama;
     Orchestrator -> MLX;
+    Orchestrator -> LiteRT;
     Orchestrator -> Kokoro;
-    Orchestrator -> Gemma;
 }

@@ -10,6 +10,13 @@
 - **Multi-Engine Execution**: First-class support for `llama.cpp` (GGUF), Apple `MLX` (.safetensors), Google `LiteRT-LM` (.tflite / AI Edge), and `Kokoro` audio TTS.
 - **Precise KV Cache Footprint**: Inspects GGUF binary headers for exact tensor and layer dimensions to compute combined static weight and dynamic KV cache memory pressure across context lengths.
 - **Unified Local API Gateway**: Built-in HTTP gateway (`http://127.0.0.1:4891/v1`) that transparently reverse-proxies OpenAI-compatible requests to whichever backend engine is active, with on-demand model warm-up.
+- **Hugging Face Hub Discovery & Background Downloader**: Dedicated discovery panel supporting keyword searches and direct URL pastes, format filters, pre-download RAM fit warnings, and persistent background transfers with SHA-256 verification.
+
+## Model Storage & Vaults
+
+LocalMgr operates on a **Bring Your Own Folder (BYOF)** architecture:
+- **Default Download Storage**: By default, models downloaded via Hugging Face Hub are saved to `~/Library/Application Support/LocalMgr/Models/`. You can change this default storage destination at any time in Preferences (`Cmd+,`).
+- **External Vault Bookmarks**: You can attach multiple existing model directories (such as external NVMe SSDs or existing `~/Models` folders) via macOS Security-Scoped Bookmarks, and select any bookmarked folder as the destination for new downloads.
 
 ## Requirements & Tool Installation (TL;DR)
 
