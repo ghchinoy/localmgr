@@ -26,7 +26,9 @@ struct SidebarView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("LocalMgr")
                             .font(.headline.bold())
-                        Text("v0.1.1 • macOS Apple Silicon")
+                        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0"
+                        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "3"
+                        Text("v\(version) (\(build)) • macOS Apple Silicon")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }

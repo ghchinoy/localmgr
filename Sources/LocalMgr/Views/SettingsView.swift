@@ -50,13 +50,19 @@ struct SettingsView: View {
                     }
                     Toggle("Terminate active engines when LocalMgr quits", isOn: $settings.terminateRunnersOnQuit)
                 }
+                Section(header: Text("About LocalMgr")) {
+                    let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0"
+                    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "3"
+                    LabeledContent("Application Version", value: "v\(version) (Build \(build))")
+                    LabeledContent("Engine Storage", value: "Application Support / Engines")
+                }
             }
             .formStyle(.grouped)
             .tabItem {
                 Label("Gateway & Memory", systemImage: "network")
             }
         }
-        .frame(width: 520, height: 340)
+        .frame(width: 520, height: 380)
         .padding()
     }
 }
