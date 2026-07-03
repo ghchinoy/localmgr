@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-03
+
+_Patch release (Build 2) introducing reasoning content support for thinking models._
+
+### Added
+- **Reasoning Model Verification:** parse `"reasoning_content"` inside OpenAI-compatible `/v1/chat/completions` response payloads so thinking models (e.g. Gemma 4 reasoning variants, DeepSeek-R1) display their chain-of-thought clearly above final answers in the Quick Test Ping tab (`[localmgr-kdg]`).
+
+### Changed
+- **Verification Token Budget:** increase Quick Test Ping generation allowance from `64` to `256` tokens (`max_tokens: 256`) to give reasoning models sufficient token runway to complete their thinking process before hitting truncation limits.
+
 ## [0.1.0] - 2026-07-03
 
 _Initial alpha release (Build 1)._
@@ -28,5 +38,6 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/ghchinoy/localmgr/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ghchinoy/localmgr/releases/tag/v0.1.0

@@ -26,7 +26,7 @@ struct SidebarView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("LocalMgr")
                             .font(.headline.bold())
-                        Text("v0.1.0 • macOS Apple Silicon")
+                        Text("v0.1.1 • macOS Apple Silicon")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
