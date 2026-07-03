@@ -2,6 +2,8 @@
 
 **LocalMgr** is a standalone, native macOS application built with Swift 6 and SwiftUI, designed to orchestrate and manage local AI execution engines and models on Apple Silicon. It provides zero-copy unified memory protection, real-time hardware telemetry, and an built-in OpenAI-compatible reverse proxy.
 
+<img width="1424" height="1038" alt="Image" src="https://github.com/user-attachments/assets/21218300-a4b0-43fc-a7b0-d7e3a29efb89" />
+
 ---
 
 ## Value Proposition & Scope
