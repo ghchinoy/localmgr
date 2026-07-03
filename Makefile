@@ -29,5 +29,11 @@ app: build
 run: app
 	open $(APP_DIR)
 
+install: app
+	@echo "Installing $(APP_NAME).app to /Applications..."
+	rm -rf /Applications/$(APP_NAME).app
+	cp -R $(APP_DIR) /Applications/$(APP_NAME).app
+	@echo "$(APP_NAME).app successfully installed to /Applications."
+
 clean:
 	rm -rf .build $(APP_DIR)

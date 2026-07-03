@@ -11,6 +11,7 @@ struct LocalMgrApp: App {
     @StateObject private var appSettings = AppSettings()
     @StateObject private var downloader = HubDownloaderService()
     @StateObject private var hfClient = HuggingFaceAPIClient()
+    @StateObject private var telemetryStore = TelemetryStore()
 
     var body: some Scene {
         WindowGroup {
@@ -23,6 +24,7 @@ struct LocalMgrApp: App {
                 .environmentObject(appSettings)
                 .environmentObject(downloader)
                 .environmentObject(hfClient)
+                .environmentObject(telemetryStore)
                 .frame(minWidth: 950, minHeight: 600)
                 .onAppear {
                     appDelegate.runnerManager = runnerManager
@@ -30,7 +32,7 @@ struct LocalMgrApp: App {
                     appDelegate.appSettings = appSettings
                     runnerManager.configure(settings: appSettings)
                     monitorService.configure(runner: runnerManager)
-                    gateway.configure(catalog: catalogService, runner: runnerManager, settings: appSettings)
+                    gateway.configure(catalog: catalogService, runner: runnerManager, settings: appSettings, telemetry: telemetryStore)
                     if !catalogService.folders.contains(appSettings.resolvedDownloadURL) {
                         catalogService.addFolder(appSettings.resolvedDownloadURL)
                     }

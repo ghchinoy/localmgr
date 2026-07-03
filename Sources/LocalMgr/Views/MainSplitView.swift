@@ -8,8 +8,10 @@ struct MainSplitView: View {
     @EnvironmentObject var gateway: LocalAPIGateway
     @EnvironmentObject var downloader: HubDownloaderService
     @EnvironmentObject var hfClient: HuggingFaceAPIClient
+    @EnvironmentObject var telemetryStore: TelemetryStore
 
     @State private var showHubSheet: Bool = false
+    @State private var showOpsDashboard: Bool = false
 
     var body: some View {
         NavigationSplitView {
@@ -63,18 +65,33 @@ struct MainSplitView: View {
                 }
             }
             ToolbarItem(placement: .primaryAction) {
-                Button(action: { showHubSheet = true }) {
-                    Label("Hub Discovery", systemImage: "globe")
+                HStack {
+                    Button(action: { showOpsDashboard = true }) {
+                        Label("Ops Dashboard", systemImage: "chart.bar.doc.horizontal")
+                    }
+                    .help("Enterprise Ops Telemetry Dashboard (Cmd+Shift+O)")
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
+
+                    Button(action: { showHubSheet = true }) {
+                        Label("Hub Discovery", systemImage: "globe")
+                    }
+                    .help("Discover and download models from Hugging Face Hub (Cmd+Shift+H)")
+                    .keyboardShortcut("h", modifiers: [.command, .shift])
                 }
-                .help("Discover and download models from Hugging Face Hub (Cmd+Shift+H)")
-                .keyboardShortcut("h", modifiers: [.command, .shift])
             }
         }
         .sheet(isPresented: $showHubSheet) {
             HubDiscoveryView()
         }
+        .sheet(isPresented: $showOpsDashboard) {
+            OpsDashboardView()
+                .frame(minWidth: 820, minHeight: 560)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenHubDiscovery"))) { _ in
             showHubSheet = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenOpsDashboard"))) { _ in
+            showOpsDashboard = true
         }
     }
 }

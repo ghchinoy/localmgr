@@ -61,6 +61,12 @@ struct SidebarView: View {
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(.accentColor)
                 }
+                Divider().padding(.vertical, 2)
+                Button(action: { NotificationCenter.default.post(name: NSNotification.Name("OpenOpsDashboard"), object: nil) }) {
+                    Label("Open Ops Dashboard", systemImage: "chart.bar.doc.horizontal")
+                        .font(.caption.bold())
+                }
+                .buttonStyle(.link)
             }
 
             Section(header: Text("Curated Hugging Face Hub")) {

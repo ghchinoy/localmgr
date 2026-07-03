@@ -13,12 +13,14 @@ class LocalAPIGateway: ObservableObject {
     private weak var catalog: ModelCatalogService?
     private weak var runner: BackendRunnerManager?
     private weak var appSettings: AppSettings?
+    private weak var telemetry: TelemetryStore?
     private var cancellables = Set<AnyCancellable>()
 
-    func configure(catalog: ModelCatalogService, runner: BackendRunnerManager, settings: AppSettings) {
+    func configure(catalog: ModelCatalogService, runner: BackendRunnerManager, settings: AppSettings, telemetry: TelemetryStore? = nil) {
         self.catalog = catalog
         self.runner = runner
         self.appSettings = settings
+        self.telemetry = telemetry
         self.port = UInt16(settings.gatewayPort)
 
         settings.$gatewayPort
@@ -279,16 +281,40 @@ class LocalAPIGateway: ObservableObject {
             let statusCode = (httpResp as? HTTPURLResponse)?.statusCode ?? 200
 
             var completionTokens = 0
+            var promptTokens = 0
+            var cachedTokens = 0
             if let json = try? JSONSerialization.jsonObject(with: respData) as? [String: Any],
-               let usage = json["usage"] as? [String: Any],
-               let tokens = usage["completion_tokens"] as? Int {
-                completionTokens = tokens
+               let usage = json["usage"] as? [String: Any] {
+                completionTokens = usage["completion_tokens"] as? Int ?? max(1, respData.count / 4)
+                promptTokens = usage["prompt_tokens"] as? Int ?? 0
+                if let details = usage["prompt_tokens_details"] as? [String: Any] {
+                    cachedTokens = details["cached_tokens"] as? Int ?? 0
+                }
             } else {
-                // Estimate roughly 4 chars per token if usage unparsed
                 completionTokens = max(1, respData.count / 4)
             }
 
             runner.recordTelemetry(ttftMs: durationMs, durationMs: durationMs, completionTokens: completionTokens)
+            if let active = runner.activeModel {
+                let thState: String
+                switch ProcessInfo.processInfo.thermalState {
+                case .nominal: thState = "Nominal"
+                case .fair: thState = "Fair"
+                case .serious: thState = "Serious"
+                case .critical: thState = "Critical"
+                @unknown default: thState = "Unknown"
+                }
+                telemetry?.record(
+                    modelName: active.name,
+                    engine: active.engineType.rawValue,
+                    ttftMs: durationMs * 0.2,
+                    durationMs: durationMs,
+                    promptTokens: promptTokens,
+                    completionTokens: completionTokens,
+                    cachedTokens: cachedTokens,
+                    thermalState: thState
+                )
+            }
 
             if let respString = String(data: respData, encoding: .utf8) {
                 sendHTTPResponse(connection: connection, status: statusCode, body: respString)
