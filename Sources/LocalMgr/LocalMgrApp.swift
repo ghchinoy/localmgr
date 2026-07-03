@@ -6,6 +6,7 @@ struct LocalMgrApp: App {
     @StateObject private var runnerManager = BackendRunnerManager()
     @StateObject private var monitorService = SystemMonitorService()
     @StateObject private var readinessService = EngineReadinessService()
+    @StateObject private var gateway = LocalAPIGateway()
 
     var body: some Scene {
         WindowGroup {
@@ -14,7 +15,11 @@ struct LocalMgrApp: App {
                 .environmentObject(runnerManager)
                 .environmentObject(monitorService)
                 .environmentObject(readinessService)
+                .environmentObject(gateway)
                 .frame(minWidth: 950, minHeight: 600)
+                .onAppear {
+                    gateway.configure(catalog: catalogService, runner: runnerManager)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -33,6 +38,7 @@ struct LocalMgrApp: App {
                 .environmentObject(runnerManager)
                 .environmentObject(monitorService)
                 .environmentObject(readinessService)
+                .environmentObject(gateway)
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "cpu")

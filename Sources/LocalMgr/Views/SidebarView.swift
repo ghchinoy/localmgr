@@ -4,9 +4,28 @@ struct SidebarView: View {
     @EnvironmentObject var catalog: ModelCatalogService
     @EnvironmentObject var runner: BackendRunnerManager
     @EnvironmentObject var readiness: EngineReadinessService
+    @EnvironmentObject var gateway: LocalAPIGateway
 
     var body: some View {
         List {
+            Section(header: Text("API Gateway (Port \(gateway.port))")) {
+                HStack {
+                    Circle()
+                        .fill(gateway.isRunning ? Color.green : Color.red)
+                        .frame(width: 8, height: 8)
+                    Text(gateway.isRunning ? "Online" : "Offline")
+                        .font(.subheadline.bold())
+                    Spacer()
+                    Text("\(gateway.requestCount) reqs")
+                        .font(.caption.monospacedDigit())
+                        .foregroundColor(.secondary)
+                }
+                Text(gateway.lastLog)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
             Section(header: Text("Vault Locations")) {
                 ForEach(catalog.folders, id: \.self) { url in
                     Label(url.lastPathComponent, systemImage: "folder.fill")

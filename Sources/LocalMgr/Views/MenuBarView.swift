@@ -4,6 +4,8 @@ struct MenuBarView: View {
     @EnvironmentObject var catalog: ModelCatalogService
     @EnvironmentObject var runner: BackendRunnerManager
     @EnvironmentObject var monitor: SystemMonitorService
+    @EnvironmentObject var readiness: EngineReadinessService
+    @EnvironmentObject var gateway: LocalAPIGateway
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -16,6 +18,13 @@ struct MenuBarView: View {
                 Text("RAM Used:")
                 Spacer()
                 Text(monitor.shortMemorySummary)
+                    .font(.caption.monospacedDigit())
+            }
+
+            HStack {
+                Text("Gateway:")
+                Spacer()
+                Text(gateway.isRunning ? "🟢 Port \(gateway.port)" : "🔴 Offline")
                     .font(.caption.monospacedDigit())
             }
 
