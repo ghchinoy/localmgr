@@ -48,10 +48,3 @@ Or open `LocalMgr.app` directly from Finder.
 ## Documentation
 - [Architecture & UX Blueprint](docs/ARCHITECTURE_PLAN.md)
 - [Core User Journeys (CUJs) & Diátaxis Mapping](docs/USER_JOURNEYS.md)
-
-## Issue Tracking
-This project uses **bd (beads)** for multi-agent issue tracking:
-```bash
-bd prime
-bd list
-```
