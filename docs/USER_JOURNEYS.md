@@ -107,20 +107,13 @@ An AI engineering lead or Ops persona managing local Mac workstations or shared 
 
 ---
 
-## Diátaxis Documentation Framework Alignment
+## Implemented Diátaxis Documentation Suite
 
-When building public-facing docs for LocalMgr, these CUJs will structure the four quadrants of our **Diátaxis** documentation tree:
+Our developer documentation is structured across the four quadrants of the **Diátaxis** framework, mapping user workflows directly to repository guides:
 
-1. **Tutorials (Learning-oriented)**:
-   * *Guide*: "Getting Started with Your First Local Model Vault on macOS" (Derived from CUJ-1 Steps 1, 4, 5).
-   * *Guide*: "Finding, Checking Fit, and Downloading Models from Hugging Face Hub" (Derived from CUJ-4 Steps 1, 2, 4).
-2. **How-To Guides (Problem-oriented)**:
-   * *Guide*: "How to Install and Configure MLX and Llama.cpp CLI Binaries" (Derived from CUJ-1 Step 2).
-   * *Guide*: "Connecting Cursor and Xcode to LocalMgr's Unified API Gateway" (Derived from CUJ-2).
-   * *Guide*: "Configuring Custom External Drive Storage for Downloaded Models" (Derived from CUJ-4 Step 3).
-3. **Reference (Information-oriented)**:
-   * *Guide*: "Supported GGUF, MLX, and LiteRT Header Specifications" (Derived from CUJ-1 Step 3).
-   * *Guide*: "Apple Silicon Hardware Auto-Tuning Profiles & Flags Matrix" (Derived from CUJ-3 Step 1).
-   * *Guide*: "Hugging Face Hub API Search Syntax & Format Tags" (Derived from CUJ-4 Step 1).
-4. **Explanation (Understanding-oriented)**:
-   * *Guide*: "Understanding Apple Silicon Unified Memory Telemetry, Page-Outs, and Fit Prediction" (Derived from CUJ-1 Step 4 & CUJ-3 Step 3).
+| Diátaxis Quadrant | Purpose & Orientation | Implemented Documentation File |
+| :--- | :--- | :--- |
+| **1. Tutorials** *(Learning-oriented)* | Step-by-step onboarding walkthroughs for new developers and persona workflows. | **[USER_GUIDE.md](USER_GUIDE.md)** (Guides 1, 4, 5) |
+| **2. How-To Guides** *(Problem-oriented)* | Practical recipes for specific tasks (IDE integration, reasoning model `curl` payloads, BYOF vaults). | **[USER_GUIDE.md](USER_GUIDE.md)** (Guides 2, 3) |
+| **3. Reference** *(Information-oriented)* | Technical schemas, CLI commands, Prometheus stat tables (`ai_gateway_llm_*`), and OTel spans. | **[README.md](../README.md)** & **[RFC 001](RFC_001_ENVOY_AI_GATEWAY_HYBRID_FEDERATION.md)** |
+| **4. Explanation** *(Understanding-oriented)* | Architectural blueprints, multi-backend routing design, and Apple Silicon memory mechanics. | **[ARCHITECTURE_PLAN.md](ARCHITECTURE_PLAN.md)** |
