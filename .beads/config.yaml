@@ -66,3 +66,6 @@
 # - github.token    → use GITHUB_TOKEN env var instead
 
 export.auto: true
+dolt.mode: "server"
+dolt.database: "localmgr"
+dolt.port: 56669
