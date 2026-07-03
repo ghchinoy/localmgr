@@ -39,6 +39,15 @@
 - **Icon Generation (`sips` + `iconutil`)**: To convert PNG artwork into `AppIcon.icns`, generate `AppIcon.iconset` sizes (`16x16` through `512x512@2x`) using `sips` and compile with `iconutil -c icns`. Ensure `CFBundleIconFile` is declared in `Info.plist` and run `touch LocalMgr.app` after bundling.
 - **Resource Path Resolution**: When loading image resources in SwiftUI from an SPM app bundle, resolve paths using `Bundle.main.path(forResource:ofType:) ?? Bundle.main.bundlePath.appending("/Contents/Resources/<file>")`.
 
+### AppKit Integration & Swift 6 Concurrency
+- **`@MainActor` Application Delegates**: When bridging AppKit delegates (`NSApplicationDelegate` via `@NSApplicationDelegateAdaptor`) to handle Dock menus or quit events (`applicationWillTerminate`), always annotate the class with `@MainActor` and ensure both `import Cocoa` and `import SwiftUI` are present at the top of the file to prevent Swift 6 isolation data races.
+
+### Reasoning Model Completion Parsing
+- **`reasoning_content` Extraction**: When parsing OpenAI-compatible chat completions (`/v1/chat/completions`) in verification tools or client wrappers, always check for and extract `choices[0].message.reasoning_content` alongside `content`. Ensure verification prompts allocate a sufficient token budget (`max_tokens >= 256`) so thinking models (e.g., Gemma 4, DeepSeek-R1) do not hit truncation limits before emitting their final answer.
+
+### Subprocess Lifecycle & App Exit Protection
+- **Orphan Prevention**: Subprocesses spawned via `Process` (`NSTask`) survive parent GUI termination by default. Always maintain a hook in `AppDelegate.applicationWillTerminate(_:)` that invokes `runnerManager.stopCurrent()` (controlled via an explicit user setting in `AppSettings`) so lingering engine servers (`llama-server`, `mlx_lm.server`) never orphan local network sockets.
+
 ## Build & Run Commands
 - Compile release build: `make build` or `swift build -c release`
 - Bundle macOS App: `make app`
