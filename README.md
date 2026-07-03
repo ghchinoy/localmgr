@@ -91,3 +91,9 @@ Or open `/Applications/LocalMgr.app` directly from Finder.
 - [Architecture & UX Blueprint](docs/ARCHITECTURE_PLAN.md)
 - [Core User Journeys (CUJs) & Diátaxis Mapping](docs/USER_JOURNEYS.md)
 - [RFC 001: Envoy AI Gateway Hybrid Cloud Federation](docs/RFC_001_ENVOY_AI_GATEWAY_HYBRID_FEDERATION.md)
+
+## Disclaimer
+
+This is not an officially supported Google product. This project is not
+eligible for the [Google Open Source Software Vulnerability Rewards
+Program](https://bughunters.google.com/open-source-security).
