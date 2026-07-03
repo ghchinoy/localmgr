@@ -50,9 +50,9 @@ By adopting key architectural patterns learned from open-source managers like Ja
 * **Global Background Transfer Engine**: Downloads persist independently when discovery panels are dismissed, showing real-time progress bars, speeds (MB/s), and ETA inside the main window toolbar and `MenuBarView`, complete with streaming SHA-256 integrity validation.
 * **Storage Location Hierarchy**: Downloads default to `~/Library/Application Support/LocalMgr/Models/`, with custom overrides available in Settings and per-download vault destination pickers.
 
-### F. Enterprise Ops & Hybrid Cloud Federation (CUJ-R3)
-* **Envoy AI Gateway Telemetry Alignment**: Adopts mature Envoy AI Gateway observability conventions (Prometheus stat trees, TTFT/ITL latency histograms, token volume accounting schemas) inside native `/v1/stats` endpoints so local telemetry plugs seamlessly into enterprise Grafana dashboards.
-* **Scaling Spectrum (DIY Local -> DIY Hosted)**: Bridges standalone developer laptops with shared Mac Studio inference racks and remote GKE/K8s clusters, providing an optional containerized Envoy sidecar deployment profile for Ops personas requiring hybrid cloud route management.
+### F. Enterprise Ops & Hybrid Cloud Federation ([RFC 001](RFC_001_ENVOY_AI_GATEWAY_HYBRID_FEDERATION.md))
+* **Phase 1 Priority (Native Swift Telemetry Parity)**: Implements exact Envoy AI Gateway observability conventions (Prometheus counters `ai_gateway_llm_token_usage_total`, latency histograms `ai_gateway_llm_request_duration_seconds`, OTel spans) inside native `/metrics` and `/v1/stats` endpoints on `LocalAPIGateway` with zero container overhead.
+* **Phase 2 (Ops Sidecar Mode & Scaling Spectrum)**: Bridges standalone developer laptops with shared Mac Studio inference racks and remote GKE/K8s clusters, providing an optional containerized Envoy AI Gateway sidecar deployment profile (`envoyproxy/ai-gateway`) for hybrid cloud route failover and quota enforcement.
 
 ---
 
