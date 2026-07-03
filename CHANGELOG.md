@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-03
+
+_Minor release (Build 3) delivering catalog refresh controls, clean session log resets, app exit runner auto-termination, and API gateway documentation._
+
+### Added
+- **Catalog Refresh Controls:** add manual refresh buttons in sidebar header and model list bar, accompanied by global `Cmd+Shift+R` keyboard shortcut to instantly re-scan external BYOF vaults without restarting (`[localmgr-yxi]`).
+- **Expanded LiteRT Discovery:** recognize `.tfl`, `.tflite`, `.task`, and `.litert` file extensions across bookmarked vaults (`[localmgr-yxi]`).
+- **Graceful Subprocess Auto-Termination:** hook into `applicationWillTerminate(_:)` to automatically terminate background runner processes when `LocalMgr` quits, configurable via a toggle switch in Preferences (`[localmgr-yxi]`).
+- **Gateway cURL Documentation:** add practical copy-pasteable reverse proxy `curl` example to `README.md` (`[localmgr-yxi]`).
+- **Manual Log & Output Clearing:** add trash icon action buttons inside Live Logs and Quick Test Ping tabs for on-demand output clearing (`[localmgr-yxi]`).
+
+### Changed
+- **Pristine Session Start:** automatically reset live terminal log output and test ping responses whenever a new runner session is initiated via `startModel(_:)`, preventing old logs from cluttering active runs (`[localmgr-yxi]`).
+
 ## [0.1.1] - 2026-07-03
 
 _Patch release (Build 2) introducing reasoning content support for thinking models._
@@ -38,6 +52,7 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ghchinoy/localmgr/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/ghchinoy/localmgr/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/ghchinoy/localmgr/releases/tag/v0.1.0

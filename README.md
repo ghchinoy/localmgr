@@ -10,9 +10,26 @@
 - **Multi-Engine Execution**: First-class support for `llama.cpp` (GGUF), Apple `MLX` (.safetensors), Google `LiteRT-LM` (.tflite / AI Edge), and `Kokoro` audio TTS.
 - **Precise KV Cache Footprint**: Inspects GGUF binary headers for exact tensor and layer dimensions to compute combined static weight and dynamic KV cache memory pressure across context lengths.
 - **Unified Local API Gateway**: Built-in HTTP gateway (`http://127.0.0.1:4891/v1`) that transparently reverse-proxies OpenAI-compatible requests to whichever backend engine is active, with on-demand model warm-up and live port rebinding.
-- **Hardware Auto-Tuning & In-App Quick Ping**: Automatically configures optimal Apple Silicon flags (`-ngl 99`, `--flash-attn on`, context caps) per chip tier, and includes an interactive 64-token verification ping tab in the inspector.
+- **Hardware Auto-Tuning & In-App Quick Ping**: Automatically configures optimal Apple Silicon flags (`-ngl 99`, `--flash-attn on`, context caps) per chip tier, and includes an interactive 256-token verification ping tab in the inspector.
 - **Hugging Face Hub Discovery & Background Downloader**: Dedicated discovery panel supporting keyword searches and direct URL pastes, format filters, pre-download RAM fit warnings, and persistent background transfers with SHA-256 verification.
-- **Native Preferences & Safety Nets**: Configurable Settings window (`Cmd+,`) allowing auto-tuning opt-out, custom download folder overrides, idle VRAM TTL unload timers, and macOS kernel memory pressure hooks (`DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`) to drain active runners before swap thrashing occurs.
+- **Native Preferences & Safety Nets**: Configurable Settings window (`Cmd+,`) allowing auto-tuning opt-out, custom download folder overrides, idle VRAM TTL unload timers, auto-terminating engines on app exit, and macOS kernel memory pressure hooks (`DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`) to drain active runners before swap thrashing occurs.
+
+## Unified Local API Gateway (`curl` Example)
+
+LocalMgr includes an OpenAI-compatible reverse proxy listening on port `4891` by default. Point your IDEs (Cursor, Xcode, VS Code) or shell scripts directly to `http://127.0.0.1:4891/v1`. If a model is active, the gateway proxies requests instantly; if stopped, it automatically wakes up the engine before serving completion tokens:
+
+```bash
+curl http://127.0.0.1:4891/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemma-4-E2B-it-Q4_K_M",
+    "messages": [
+      {"role": "system", "content": "You are a concise coding assistant."},
+      {"role": "user", "content": "Explain Apple Silicon unified memory in one sentence."}
+    ],
+    "max_tokens": 128
+  }'
+```
 
 ## Model Storage & Vaults
 

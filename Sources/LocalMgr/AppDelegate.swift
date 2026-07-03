@@ -5,6 +5,13 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate {
     weak var runnerManager: BackendRunnerManager?
     weak var catalogService: ModelCatalogService?
+    weak var appSettings: AppSettings?
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if appSettings?.terminateRunnersOnQuit ?? true {
+            runnerManager?.stopCurrent()
+        }
+    }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()

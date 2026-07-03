@@ -27,6 +27,7 @@ struct LocalMgrApp: App {
                 .onAppear {
                     appDelegate.runnerManager = runnerManager
                     appDelegate.catalogService = catalogService
+                    appDelegate.appSettings = appSettings
                     runnerManager.configure(settings: appSettings)
                     monitorService.configure(runner: runnerManager)
                     gateway.configure(catalog: catalogService, runner: runnerManager, settings: appSettings)
@@ -60,6 +61,11 @@ struct LocalMgrApp: App {
                 .disabled(runnerManager.status != .running && runnerManager.status != .starting)
 
                 Divider()
+
+                Button("Refresh Catalog") {
+                    catalogService.refreshCatalog()
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
 
                 Button("Discover Hub Models...") {
                     NotificationCenter.default.post(name: NSNotification.Name("OpenHubDiscovery"), object: nil)

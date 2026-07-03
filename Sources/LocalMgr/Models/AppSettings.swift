@@ -13,6 +13,7 @@ class AppSettings: ObservableObject {
         }
     }
     @AppStorage("customDownloadPath") var customDownloadPath: String = ""
+    @AppStorage("terminateRunnersOnQuit") var terminateRunnersOnQuit: Bool = true
 
     var resolvedDownloadURL: URL {
         if !customDownloadPath.isEmpty {

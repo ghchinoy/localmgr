@@ -43,11 +43,12 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
 
-                Section(header: Text("Idle VRAM Reclaiming")) {
+                Section(header: Text("Lifecycle & VRAM Reclaiming")) {
                     Toggle("Auto-Unload Idle Models", isOn: $settings.enableIdleUnload)
                     if settings.enableIdleUnload {
                         Stepper("Unload after: \(settings.idleUnloadMinutes) minutes", value: $settings.idleUnloadMinutes, in: 1...120)
                     }
+                    Toggle("Terminate active engines when LocalMgr quits", isOn: $settings.terminateRunnersOnQuit)
                 }
             }
             .formStyle(.grouped)

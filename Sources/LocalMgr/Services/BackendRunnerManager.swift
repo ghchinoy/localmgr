@@ -128,7 +128,8 @@ class BackendRunnerManager: ObservableObject {
         self.activeModel = model
         self.lastRunModelID = model.id
         self.status = .starting
-        self.logOutput.append("\n--- Starting \(model.name) via \(model.engineType.rawValue) ---\n")
+        self.logOutput = "\n--- Starting \(model.name) via \(model.engineType.rawValue) ---\n"
+        self.lastPingResponse = ""
 
         let binaryName = model.engineType.defaultBinaryName
         guard let binaryPath = resolveBinaryPath(name: binaryName) else {

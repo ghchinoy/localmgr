@@ -111,7 +111,7 @@ class ModelCatalogService: ObservableObject {
                         headCountKV: headerInfo.headCountKV
                     )
                     scanned.append(item)
-                } else if fileURL.pathExtension.lowercased() == "tflite" || fileURL.pathExtension.lowercased() == "task" {
+                } else if ["tflite", "tfl", "task", "litert"].contains(fileURL.pathExtension.lowercased()) {
                     let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
                     let item = ModelItem(
                         name: fileURL.deletingPathExtension().lastPathComponent,
