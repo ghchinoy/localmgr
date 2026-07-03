@@ -55,6 +55,12 @@
 - **Append-Only JSONL Storage**: When persisting continuous inference telemetry (`history.jsonl`) from high-frequency HTTP proxy streams, use append-only file operations (`FileHandle.seekToEndOfFile()`) rather than re-encoding entire historical arrays on `@MainActor` to prevent UI frame drops during high tokens-per-second generation.
 - **Prefix Cache Hit Rate**: When parsing `usage` from OpenAI-compatible local engines (`llama-server`), check for `prompt_tokens_details.cached_tokens`. Calculate prefix optimization as `cached_tokens / prompt_tokens` to provide developers with real-time insight into prompt reuse efficiency.
 
+### Reverse Proxy Networking & Timeouts
+- **Long-Duration Inference Timeouts**: When implementing local HTTP reverse proxies or gateways (`LocalAPIGateway`) in Swift that route LLM completions (`/v1/chat/completions`), never use `URLSession.shared` (which enforces a strict 60-second request timeout). Always configure a dedicated `URLSession` and `URLRequest.timeoutInterval` of at least 30 minutes (`1800.0s`) so large token generations (`max_tokens >= 2048`) do not drop mid-stream.
+
+### Hugging Face Hub API Integration
+- **Recursive Tree & Credential Injection**: When querying repository file trees via `https://huggingface.co/api/models/<repo>/tree/main`, always pass `?recursive=true` so weight files nested in subdirectories (`gguf/`, `model/`) are discovered. Always probe `~/.cache/huggingface/token` and `ProcessInfo.processInfo.environment["HF_TOKEN"]` to attach `Authorization: Bearer <token>` for gated repository access.
+
 ## Build & Run Commands
 - Compile release build: `make build` or `swift build -c release`
 - Bundle macOS App: `make app`
