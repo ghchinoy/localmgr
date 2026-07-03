@@ -33,23 +33,29 @@ class EngineReadinessService: ObservableObject {
 
     func refreshReadiness() {
         for engine in EngineType.allCases {
-            let binaryName = engine.defaultBinaryName
-            if let path = findBinaryPath(name: binaryName) {
+            var path: String?
+            if engine == .liteRT {
+                path = findBinaryPath(name: "litert-lm") ?? findBinaryPath(name: "litert-benchmark")
+            } else {
+                path = findBinaryPath(name: engine.defaultBinaryName)
+            }
+
+            if let resolved = path {
                 statuses[engine] = EngineComponentStatus(
                     engineType: engine,
                     isInstalled: true,
-                    resolvedPath: path,
+                    resolvedPath: resolved,
                     versionString: "Available",
-                    installHint: "Installed at \(path)"
+                    installHint: "Installed at \(resolved)"
                 )
             } else {
                 let hint: String
                 switch engine {
                 case .llamaCpp: hint = "Install via: brew install llama.cpp"
-                case .mlx: hint = "Install via: pip install mlx-lm"
+                case .mlx: hint = "Install via: pip install mlx-lm or uv tool install mlx-lm"
                 case .kokoro: hint = "Install Kokoro server binary or place in App Support"
                 case .gemmaCpp: hint = "Compile gemma.cpp binary and place in App Support"
-                case .liteRT: hint = "Install via: pip install ai-edge-litert or place litert-lm binary in App Support"
+                case .liteRT: hint = "Install via: uv tool install ai-edge-litert or pip install ai-edge-litert"
                 }
                 statuses[engine] = EngineComponentStatus(
                     engineType: engine,
@@ -61,7 +67,7 @@ class EngineReadinessService: ObservableObject {
             }
         }
 
-        if let path = findBinaryPath(name: "hf" ) ?? findBinaryPath(name: "huggingface-cli") {
+        if let path = findBinaryPath(name: "hf") ?? findBinaryPath(name: "huggingface-cli") {
             hfInstalled = true
             hfPath = path
         } else {
@@ -77,7 +83,10 @@ class EngineReadinessService: ObservableObject {
             "/usr/local/bin/\(name)",
             "/usr/bin/\(name)",
             NSHomeDirectory() + "/Library/Application Support/LocalMgr/Engines/\(name)",
-            NSHomeDirectory() + "/.local/bin/\(name)"
+            NSHomeDirectory() + "/.local/bin/\(name)",
+            NSHomeDirectory() + "/.cargo/bin/\(name)",
+            NSHomeDirectory() + "/.local/share/uv/tools/ai-edge-litert/bin/\(name)",
+            NSHomeDirectory() + "/.local/share/uv/tools/mlx-lm/bin/\(name)"
         ]
 
         for path in searchPaths {

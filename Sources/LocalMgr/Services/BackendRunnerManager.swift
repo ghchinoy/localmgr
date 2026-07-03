@@ -139,15 +139,27 @@ class BackendRunnerManager: ObservableObject {
     }
 
     private func resolveBinaryPath(name: String) -> String? {
-        let commonPaths = [
-            "/opt/homebrew/bin/\(name)",
-            "/usr/local/bin/\(name)",
-            "/usr/bin/\(name)",
-            NSHomeDirectory() + "/Library/Application Support/LocalMgr/Engines/\(name)"
-        ]
-        for path in commonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                return path
+        var namesToProbe = [name]
+        if name == "litert-lm" {
+            namesToProbe.append("litert-benchmark")
+        }
+
+        let fileManager = FileManager.default
+        for n in namesToProbe {
+            let searchPaths = [
+                "/opt/homebrew/bin/\(n)",
+                "/usr/local/bin/\(n)",
+                "/usr/bin/\(n)",
+                NSHomeDirectory() + "/Library/Application Support/LocalMgr/Engines/\(n)",
+                NSHomeDirectory() + "/.local/bin/\(n)",
+                NSHomeDirectory() + "/.cargo/bin/\(n)",
+                NSHomeDirectory() + "/.local/share/uv/tools/ai-edge-litert/bin/\(n)",
+                NSHomeDirectory() + "/.local/share/uv/tools/mlx-lm/bin/\(n)"
+            ]
+            for path in searchPaths {
+                if fileManager.fileExists(atPath: path) {
+                    return path
+                }
             }
         }
         return nil
