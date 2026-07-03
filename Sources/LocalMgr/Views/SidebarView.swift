@@ -52,6 +52,15 @@ struct SidebarView: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
+                if runner.status == .running && runner.lastTokensPerSecond > 0 {
+                    HStack {
+                        Text("⚡️ \(String(format: "%.1f", runner.lastTokensPerSecond)) tok/s")
+                        Spacer()
+                        Text("\(Int(runner.lastTTFTMilliseconds))ms TTFT")
+                    }
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(.accentColor)
+                }
             }
 
             Section(header: Text("Curated Hugging Face Hub")) {

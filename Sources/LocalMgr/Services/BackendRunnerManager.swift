@@ -17,6 +17,11 @@ class BackendRunnerManager: ObservableObject {
     @Published var port: Int = 8080
     @Published var lastPingResponse: String = ""
     @Published var isPinging: Bool = false
+    @Published var totalRequestsServed: Int = 0
+    @Published var totalTokensProcessed: Int = 0
+    @Published var lastTTFTMilliseconds: Double = 0.0
+    @Published var lastTokensPerSecond: Double = 0.0
+    @Published var sessionStartTime: Date? = nil
 
     private var currentProcess: Process?
     private var pipe: Pipe?
@@ -128,6 +133,11 @@ class BackendRunnerManager: ObservableObject {
         self.activeModel = model
         self.lastRunModelID = model.id
         self.status = .starting
+        self.sessionStartTime = Date()
+        self.totalRequestsServed = 0
+        self.totalTokensProcessed = 0
+        self.lastTTFTMilliseconds = 0.0
+        self.lastTokensPerSecond = 0.0
         self.logOutput = "\n--- Starting \(model.name) via \(model.engineType.rawValue) ---\n"
         self.lastPingResponse = ""
 
@@ -230,6 +240,25 @@ class BackendRunnerManager: ObservableObject {
         currentProcess = nil
         activeModel = nil
         status = .stopped
+        sessionStartTime = nil
+    }
+
+    func clearLogs() {
+        self.logOutput = ""
+    }
+
+    func clearPingResponse() {
+        self.lastPingResponse = ""
+    }
+
+    func recordTelemetry(ttftMs: Double, durationMs: Double, completionTokens: Int) {
+        self.totalRequestsServed += 1
+        self.totalTokensProcessed += completionTokens
+        if ttftMs > 0 { self.lastTTFTMilliseconds = ttftMs }
+        if durationMs > 0 && completionTokens > 0 {
+            self.lastTokensPerSecond = Double(completionTokens) / (durationMs / 1000.0)
+        }
+        recordActivity()
     }
 
     private func resolveBinaryPath(name: String) -> String? {
