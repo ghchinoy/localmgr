@@ -17,6 +17,11 @@ class BackendRunnerManager: ObservableObject {
 
     private var currentProcess: Process?
     private var pipe: Pipe?
+    private weak var appSettings: AppSettings?
+
+    func configure(settings: AppSettings) {
+        self.appSettings = settings
+    }
 
     func startModel(_ model: ModelItem) {
         stopCurrent()
@@ -34,11 +39,25 @@ class BackendRunnerManager: ObservableObject {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binaryPath)
 
+        let autoTuneEnabled = appSettings?.enableHardwareAutoTuning ?? true
+        let defaultCtx = appSettings?.defaultContextLength ?? 8192
+
         var args: [String] = []
         switch model.engineType {
         case .llamaCpp:
-            args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "99", "-c", "8192"]
+            if autoTuneEnabled {
+                let profile = HardwareAutoTuner.detectProfile(physicalMemoryBytes: Int64(ProcessInfo.processInfo.physicalMemory))
+                self.logOutput.append("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Injecting -ngl \(profile.recommendedGPULayers), --flash-attn, ctx \(profile.maxSafeContext)\n")
+                args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "\(profile.recommendedGPULayers)", "-c", "\(min(defaultCtx, profile.maxSafeContext))", "--flash-attn"]
+            } else {
+                self.logOutput.append("[Hardware Auto-Tuner]: Opted out in Settings. Using manual flags (-ngl 99, ctx \(defaultCtx))\n")
+                args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "99", "-c", "\(defaultCtx)"]
+            }
         case .mlx:
+            if autoTuneEnabled {
+                let profile = HardwareAutoTuner.detectProfile(physicalMemoryBytes: Int64(ProcessInfo.processInfo.physicalMemory))
+                self.logOutput.append("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Optimizing MLX server launch.\n")
+            }
             args = ["--model", model.fileURL.path, "--port", "\(port)"]
         case .kokoro:
             args = ["--model", model.fileURL.path, "--port", "\(port)"]
