@@ -8,6 +8,7 @@ struct CuratedModel: Identifiable {
     let repoID: String
     let filename: String
     let format: ModelFormat
+    let sizeBytes: Int64
     let sizeFormatted: String
     let expectedSHA256: String?
 }
@@ -36,28 +37,37 @@ class HubDownloaderService: ObservableObject {
     /// disappearing in the same render pass.
     @Published var lastError: String?
 
+    // NOTE (localmgr-3iz): repoID/filename pairs below are verified against
+    // the live Hugging Face Hub API (HTTP 200 on the resolve URL) as of
+    // 2026-07-16. Google/Meta/Cohere do not publish GGUF quantizations
+    // under their own orgs -- use the community quantizer (bartowski) that
+    // actually hosts the file, and match its exact filename casing (HF
+    // paths are case-sensitive).
     let curatedCatalog: [CuratedModel] = [
         CuratedModel(
-            name: "Cohere North Mini Code (7B Q4_K_M)",
-            repoID: "cohere/north-mini-code-gguf",
-            filename: "north-mini-code-q4_k_m.gguf",
+            name: "Cohere North Mini Code (30B-A3B Q4_K_M)",
+            repoID: "bartowski/North-Mini-Code-1.0-GGUF",
+            filename: "North-Mini-Code-1.0-Q4_K_M.gguf",
             format: .gguf,
-            sizeFormatted: "4.8 GB",
+            sizeBytes: 18_744_024_640,
+            sizeFormatted: "18.7 GB",
             expectedSHA256: nil
         ),
         CuratedModel(
             name: "Gemma 2 9B IT (Q4_K_M)",
-            repoID: "google/gemma-2-9b-it-GGUF",
+            repoID: "bartowski/gemma-2-9b-it-GGUF",
             filename: "gemma-2-9b-it-Q4_K_M.gguf",
             format: .gguf,
-            sizeFormatted: "5.4 GB",
+            sizeBytes: 5_761_057_728,
+            sizeFormatted: "5.8 GB",
             expectedSHA256: nil
         ),
         CuratedModel(
             name: "Llama 3.1 8B Instruct (Q4_K_M)",
-            repoID: "meta-llama/Meta-Llama-3.1-8B-Instruct-GGUF",
-            filename: "meta-llama-3.1-8b-instruct-q4_k_m.gguf",
+            repoID: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+            filename: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf",
             format: .gguf,
+            sizeBytes: 4_920_739_232,
             sizeFormatted: "4.9 GB",
             expectedSHA256: nil
         )
@@ -142,7 +152,7 @@ class HubDownloaderService: ObservableObject {
     }
 
     func downloadModel(_ model: CuratedModel, targetFolder: URL, catalog: ModelCatalogService) {
-        let repoFile = HFRepoFile(path: model.filename, sizeBytes: 5_000_000_000, format: model.format)
+        let repoFile = HFRepoFile(path: model.filename, sizeBytes: model.sizeBytes, format: model.format)
         downloadRepoFile(repoID: model.repoID, file: repoFile, targetFolder: targetFolder, catalog: catalog)
     }
 }
