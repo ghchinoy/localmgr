@@ -88,7 +88,31 @@ class ModelCatalogService: ObservableObject {
         }
     }
 
+    /// Kicks off a full directory scan + GGUF header parse in the background
+    /// and publishes the result when done. `refreshCatalog()` itself stays a
+    /// fire-and-forget, non-async call so every existing call site (app
+    /// launch, folder add, manual refresh, post-download) is unaffected.
+    ///
+    /// (localmgr-b9v.5 / REL-1): the previous implementation ran this
+    /// `FileManager` enumeration + `GGUFHeaderParser.inspect` synchronously
+    /// on `@MainActor`, which could beachball the UI for large vaults since
+    /// it's invoked on every folder add, manual refresh, and after every
+    /// completed download.
     func refreshCatalog() {
+        let foldersSnapshot = folders
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let scanned = Self.scanFolders(foldersSnapshot)
+            await MainActor.run {
+                self?.models = scanned
+            }
+        }
+    }
+
+    /// Pure, `nonisolated` directory scan -- explicitly opts out of the
+    /// enclosing `@MainActor` isolation (which static members of a
+    /// `@MainActor` class otherwise inherit) so it's safe to run on a
+    /// background executor via `Task.detached`.
+    nonisolated private static func scanFolders(_ folders: [URL]) -> [ModelItem] {
         var scanned: [ModelItem] = []
         let fileManager = FileManager.default
 
@@ -148,10 +172,10 @@ class ModelCatalogService: ObservableObject {
             }
         }
 
-        self.models = scanned
+        return scanned
     }
 
-    private func calculateFolderSize(url: URL) -> Int64 {
+    nonisolated private static func calculateFolderSize(url: URL) -> Int64 {
         var total: Int64 = 0
         guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
         for case let fileURL as URL in enumerator {

@@ -46,8 +46,14 @@ class LocalAPIGateway: ObservableObject {
     func startListening() {
         stopListening()
         do {
+            let listenerPort = NWEndpoint.Port(rawValue: port)!
             let parameters = NWParameters.tcp
-            let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
+            // (localmgr-b9v.1 / SEC-1): restrict the listener to the loopback
+            // interface only. NWListener binds to all interfaces by default
+            // absent this, which would expose the unauthenticated local LLM
+            // gateway to every other device on the same LAN/WiFi.
+            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: listenerPort)
+            let listener = try NWListener(using: parameters, on: listenerPort)
             
             listener.stateUpdateHandler = { [weak self] state in
                 Task { @MainActor [weak self] in
@@ -89,19 +95,89 @@ class LocalAPIGateway: ObservableObject {
         isRunning = false
     }
 
+    /// (localmgr-b9v.2 / SEC-2): hard cap on total request size (headers + body).
+    /// Requests exceeding this are rejected with 413 rather than silently
+    /// truncated/mis-parsed. Explicitly `nonisolated` since it's read from
+    /// the nonisolated connection-handling closures below.
+    nonisolated private static let maxRequestBytes = 10 * 1024 * 1024 // 10 MB
+
     nonisolated private func handleConnection(_ connection: NWConnection) {
         connection.start(queue: .global(qos: .userInitiated))
+        receiveRequest(connection: connection, buffer: Data())
+    }
+
+    /// (localmgr-b9v.2 / SEC-2): accumulates the request across as many TCP
+    /// reads as needed instead of assuming it always arrives in a single
+    /// <=64KB packet. Parses headers once `\r\n\r\n` is seen, honors
+    /// `Content-Length` to know when the body is fully buffered, and
+    /// enforces `maxRequestBytes` throughout.
+    nonisolated private func receiveRequest(connection: NWConnection, buffer: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            guard let self = self, let data = data, !data.isEmpty else {
+            guard let self = self else {
                 connection.cancel()
                 return
             }
 
-            Task {
-                await self.incrementRequestCount()
-                await self.processHTTPRequest(data: data, connection: connection)
+            var newBuffer = buffer
+            if let data, !data.isEmpty {
+                newBuffer.append(data)
             }
+
+            if newBuffer.count > Self.maxRequestBytes {
+                self.sendHTTPResponse(connection: connection, status: 413, body: "{\"error\":\"Request payload exceeds \(Self.maxRequestBytes / 1_048_576)MB limit\"}")
+                connection.cancel()
+                return
+            }
+
+            guard let headerEndRange = newBuffer.range(of: Data("\r\n\r\n".utf8)) else {
+                if isComplete || error != nil {
+                    // Connection closed (or errored) before headers finished; nothing usable to process.
+                    connection.cancel()
+                    return
+                }
+                self.receiveRequest(connection: connection, buffer: newBuffer)
+                return
+            }
+
+            let headerData = newBuffer.subdata(in: newBuffer.startIndex..<headerEndRange.lowerBound)
+            let headerLines = (String(data: headerData, encoding: .utf8) ?? "").components(separatedBy: "\r\n")
+            let contentLength = self.extractHeaderValue("Content-Length", from: headerLines).flatMap { Int($0) } ?? 0
+            let bodyBytesSoFar = newBuffer.distance(from: headerEndRange.upperBound, to: newBuffer.endIndex)
+
+            if bodyBytesSoFar >= contentLength || isComplete {
+                Task {
+                    await self.incrementRequestCount()
+                    await self.processHTTPRequest(data: newBuffer, connection: connection)
+                }
+                return
+            }
+
+            self.receiveRequest(connection: connection, buffer: newBuffer)
         }
+    }
+
+    /// Case-insensitive lookup of an HTTP header's value from raw request/response header lines.
+    nonisolated private func extractHeaderValue(_ name: String, from lines: [String]) -> String? {
+        let prefix = "\(name.lowercased()):"
+        for line in lines where line.lowercased().hasPrefix(prefix) {
+            return String(line.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    /// (localmgr-b9v.1 / SEC-1): reflects the request's `Origin` back as
+    /// `Access-Control-Allow-Origin` only when it's another process on this
+    /// same machine (127.0.0.1 / localhost / ::1, any port) -- e.g. a local
+    /// web-based chat UI. A wildcard `*` would let *any* webpage open in the
+    /// user's browser (including a malicious one) read responses from this
+    /// unauthenticated local LLM gateway.
+    nonisolated private func allowedCORSOrigin(from lines: [String]) -> String? {
+        guard let origin = extractHeaderValue("Origin", from: lines),
+              let url = URL(string: origin),
+              let host = url.host else { return nil }
+        let normalizedHost = (host.hasPrefix("[") && host.hasSuffix("]")) ? String(host.dropFirst().dropLast()) : host
+        let localHosts: Set<String> = ["127.0.0.1", "localhost", "::1"]
+        return localHosts.contains(normalizedHost) ? origin : nil
     }
 
     private func incrementRequestCount() {
@@ -132,24 +208,26 @@ class LocalAPIGateway: ObservableObject {
 
         let method = parts[0]
         let path = parts[1]
+        // (localmgr-b9v.1 / SEC-1): only reflect CORS back for same-machine origins.
+        let allowedOrigin = allowedCORSOrigin(from: lines)
 
         await updateLastLog("\(method) \(path)")
         await runner?.recordActivity()
 
         if method == "GET" && (path == "/v1/models" || path == "/models") {
-            await handleModelsList(connection: connection)
+            await handleModelsList(connection: connection, allowedOrigin: allowedOrigin)
         } else if method == "GET" && (path == "/v1/stats" || path == "/stats" || path == "/health") {
-            await handleStats(connection: connection)
+            await handleStats(connection: connection, allowedOrigin: allowedOrigin)
         } else if method == "GET" && path == "/metrics" {
-            await handlePrometheusMetrics(connection: connection)
+            await handlePrometheusMetrics(connection: connection, allowedOrigin: allowedOrigin)
         } else if method == "POST" && (path == "/v1/chat/completions" || path == "/chat/completions") {
-            await handleChatCompletions(rawRequest: data, requestString: requestString, connection: connection)
+            await handleChatCompletions(rawRequest: data, requestString: requestString, connection: connection, allowedOrigin: allowedOrigin)
         } else {
-            sendHTTPResponse(connection: connection, status: 404, body: "{\"error\":\"Endpoint not found on LocalMgr Gateway\"}")
+            sendHTTPResponse(connection: connection, status: 404, body: "{\"error\":\"Endpoint not found on LocalMgr Gateway\"}", allowedOrigin: allowedOrigin)
         }
     }
 
-    private func handleModelsList(connection: NWConnection) async {
+    private func handleModelsList(connection: NWConnection, allowedOrigin: String?) async {
         guard let catalog = catalog, let runner = runner else { return }
         let activeID = runner.activeModel?.id
         let isRunning = runner.status == .running
@@ -169,13 +247,13 @@ class LocalAPIGateway: ObservableObject {
 
         if let jsonData = try? JSONSerialization.data(withJSONObject: responseDict),
            let jsonString = String(data: jsonData, encoding: .utf8) {
-            sendHTTPResponse(connection: connection, status: 200, body: jsonString)
+            sendHTTPResponse(connection: connection, status: 200, body: jsonString, allowedOrigin: allowedOrigin)
         } else {
-            sendHTTPResponse(connection: connection, status: 500, body: "{\"error\":\"JSON serialization error\"}")
+            sendHTTPResponse(connection: connection, status: 500, body: "{\"error\":\"JSON serialization error\"}", allowedOrigin: allowedOrigin)
         }
     }
 
-    private func handleStats(connection: NWConnection) async {
+    private func handleStats(connection: NWConnection, allowedOrigin: String?) async {
         guard let runner = runner else { return }
         let uptime: Int
         if let start = runner.sessionStartTime, runner.status == .running {
@@ -206,13 +284,13 @@ class LocalAPIGateway: ObservableObject {
 
         if let jsonData = try? JSONSerialization.data(withJSONObject: responseDict),
            let jsonString = String(data: jsonData, encoding: .utf8) {
-            sendHTTPResponse(connection: connection, status: 200, body: jsonString)
+            sendHTTPResponse(connection: connection, status: 200, body: jsonString, allowedOrigin: allowedOrigin)
         } else {
-            sendHTTPResponse(connection: connection, status: 500, body: "{\"error\":\"JSON serialization error\"}")
+            sendHTTPResponse(connection: connection, status: 500, body: "{\"error\":\"JSON serialization error\"}", allowedOrigin: allowedOrigin)
         }
     }
 
-    private func handlePrometheusMetrics(connection: NWConnection) async {
+    private func handlePrometheusMetrics(connection: NWConnection, allowedOrigin: String?) async {
         guard let runner = runner else { return }
         let activeName = runner.activeModel?.name ?? "none"
         let engineName = runner.activeModel?.engineType.rawValue ?? "none"
@@ -232,12 +310,12 @@ class LocalAPIGateway: ObservableObject {
         ai_gateway_llm_token_usage_total{model="\(activeName)",backend="localmgr"} \(runner.totalTokensProcessed)
         """
 
-        sendHTTPResponse(connection: connection, status: 200, body: promText)
+        sendHTTPResponse(connection: connection, status: 200, body: promText, allowedOrigin: allowedOrigin)
     }
 
-    private func handleChatCompletions(rawRequest: Data, requestString: String, connection: NWConnection) async {
+    private func handleChatCompletions(rawRequest: Data, requestString: String, connection: NWConnection, allowedOrigin: String?) async {
         guard let runner = runner, let catalog = catalog else {
-            sendHTTPResponse(connection: connection, status: 500, body: "{\"error\":\"Gateway not initialized\"}")
+            sendHTTPResponse(connection: connection, status: 500, body: "{\"error\":\"Gateway not initialized\"}", allowedOrigin: allowedOrigin)
             return
         }
 
@@ -256,7 +334,7 @@ class LocalAPIGateway: ObservableObject {
             if let matched = catalog.models.first(where: { $0.name.localizedCaseInsensitiveContains(reqName) || reqName.localizedCaseInsensitiveContains($0.name) }) {
                 if runner.status == .running {
                     AppLog.error("Gateway request for '\(matched.name)' conflicted with active runner '\(runner.activeModel?.name ?? "unknown")' (409)", category: .gateway)
-                    sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: LocalMgr is currently running '\(runner.activeModel?.name ?? "another model")'. Stop current runner before starting '\(matched.name)'.\"}")
+                    sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: LocalMgr is currently running '\(runner.activeModel?.name ?? "another model")'. Stop current runner before starting '\(matched.name)'.\"}", allowedOrigin: allowedOrigin)
                     return
                 }
                 updateLastLog("On-demand wake: starting \(matched.name)...")
@@ -270,7 +348,7 @@ class LocalAPIGateway: ObservableObject {
                 // If model name not found in catalog, but runner is running, fail fast if names conflict unless "default" or "local"
                 if reqName.lowercased() != "default" && reqName.lowercased() != "local" {
                     AppLog.error("Gateway request for unknown model '\(reqName)' conflicted with active runner '\(runner.activeModel?.name ?? "unknown")' (409)", category: .gateway)
-                    sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: Requested model '\(reqName)' not found in vault, and runner is active with '\(runner.activeModel?.name ?? "another model")'.\"}")
+                    sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: Requested model '\(reqName)' not found in vault, and runner is active with '\(runner.activeModel?.name ?? "another model")'.\"}", allowedOrigin: allowedOrigin)
                     return
                 }
             }
@@ -278,7 +356,7 @@ class LocalAPIGateway: ObservableObject {
 
         guard runner.status == .running || runner.activeModel != nil else {
             AppLog.info("Gateway received a completion request with no runner active (503)", category: .gateway)
-            sendHTTPResponse(connection: connection, status: 503, body: "{\"error\":\"No local model runner active or ready on port \(runner.port)\"}")
+            sendHTTPResponse(connection: connection, status: 503, body: "{\"error\":\"No local model runner active or ready on port \(runner.port)\"}", allowedOrigin: allowedOrigin)
             return
         }
 
@@ -332,27 +410,40 @@ class LocalAPIGateway: ObservableObject {
             }
 
             if let respString = String(data: respData, encoding: .utf8) {
-                sendHTTPResponse(connection: connection, status: statusCode, body: respString)
+                sendHTTPResponse(connection: connection, status: statusCode, body: respString, allowedOrigin: allowedOrigin)
             } else {
-                sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Invalid response encoding from backend\"}")
+                sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Invalid response encoding from backend\"}", allowedOrigin: allowedOrigin)
             }
         } catch {
             AppLog.error("Proxy request to local engine failed: \(error.localizedDescription)", category: .gateway)
-            sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Proxy error: \(error.localizedDescription)\"}")
+            sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Proxy error: \(error.localizedDescription)\"}", allowedOrigin: allowedOrigin)
         }
     }
 
-    nonisolated private func sendHTTPResponse(connection: NWConnection, status: Int, body: String) {
-        let statusText = status == 200 ? "OK" : (status == 404 ? "Not Found" : "Error")
-        let response = """
-        HTTP/1.1 \(status) \(statusText)\r
-        Content-Type: application/json\r
-        Content-Length: \(body.utf8.count)\r
-        Connection: close\r
-        Access-Control-Allow-Origin: *\r
-        \r
-        \(body)
-        """
+    /// (localmgr-b9v.1 / SEC-1): `allowedOrigin` is only ever a non-nil value
+    /// when `allowedCORSOrigin(from:)` validated the request's `Origin` as a
+    /// same-machine origin; passing `nil` (the default) omits the CORS
+    /// header entirely rather than the previous unconditional wildcard `*`.
+    nonisolated private func sendHTTPResponse(connection: NWConnection, status: Int, body: String, allowedOrigin: String? = nil) {
+        let statusText: String
+        switch status {
+        case 200: statusText = "OK"
+        case 404: statusText = "Not Found"
+        case 413: statusText = "Payload Too Large"
+        default: statusText = "Error"
+        }
+
+        var headerLines = [
+            "HTTP/1.1 \(status) \(statusText)",
+            "Content-Type: application/json",
+            "Content-Length: \(body.utf8.count)",
+            "Connection: close"
+        ]
+        if let allowedOrigin {
+            headerLines.append("Access-Control-Allow-Origin: \(allowedOrigin)")
+            headerLines.append("Vary: Origin")
+        }
+        let response = headerLines.joined(separator: "\r\n") + "\r\n\r\n" + body
 
         let data = Data(response.utf8)
         connection.send(content: data, completion: .contentProcessed { _ in

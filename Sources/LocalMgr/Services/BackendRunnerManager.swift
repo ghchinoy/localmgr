@@ -195,6 +195,14 @@ class BackendRunnerManager: ObservableObject {
 
         outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
+            // (localmgr-b9v.3 / RACE-2): an empty read means EOF -- the pipe's
+            // write end has closed (process exited or was replaced). Clear the
+            // handler immediately so it isn't invoked repeatedly in a tight
+            // CPU-spinning loop; termination/cleanup elsewhere owns the rest.
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
             if let text = String(data: data, encoding: .utf8), !text.isEmpty {
                 Task { @MainActor [weak self] in
                     self?.logOutput.append(text)
@@ -218,8 +226,19 @@ class BackendRunnerManager: ObservableObject {
                     self.logOutput.append("\n[Runner process exited cleanly]\n")
                     AppLog.info("Runner '\(model.name)' (\(binaryName)) exited cleanly", category: .runner)
                 }
-                self.currentProcess = nil
-                self.activeModel = nil
+                // Only clear tracking state if this termination is still for the
+                // currently-tracked process (localmgr-b9v.4 / RACE-1: a stop
+                // immediately followed by a new start could otherwise let a
+                // stale termination callback stomp on the new session's state).
+                if self.currentProcess === proc {
+                    // (localmgr-b9v.3 / RACE-2): clear the handler on exit too,
+                    // in case termination fires before EOF is observed by the
+                    // reader, so it can never spin after this point.
+                    self.pipe?.fileHandleForReading.readabilityHandler = nil
+                    self.pipe = nil
+                    self.currentProcess = nil
+                    self.activeModel = nil
+                }
             }
         }
 
@@ -227,8 +246,15 @@ class BackendRunnerManager: ObservableObject {
             try process.run()
             self.currentProcess = process
             AppLog.info("Launched \(binaryName) for '\(model.name)' on port \(port)", category: .runner)
-            // Fallback status change if no specific string matched within 2 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            // Fallback status change if no specific string matched within 2 seconds.
+            // (localmgr-b9v.4 / RACE-1): guard on process identity, not just
+            // status/isRunning -- if the runner was stopped and a different
+            // model started within this 2s window, `self.status` could
+            // legitimately be `.starting` again for the *new* process, and
+            // this stale timer must not flip it to `.running` on the new
+            // process's behalf before it's actually ready.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self, self.currentProcess === process else { return }
                 if self.status == .starting && process.isRunning {
                     self.status = .running
                 }
@@ -246,6 +272,10 @@ class BackendRunnerManager: ObservableObject {
             self.logOutput.append("\n--- Terminated runner process ---\n")
             AppLog.info("Manually terminated runner '\(activeModel?.name ?? "unknown model")'", category: .runner)
         }
+        // (localmgr-b9v.3 / RACE-2): clear the handler here too so a manual
+        // stop doesn't leave a stale reader spinning while the process winds down.
+        pipe?.fileHandleForReading.readabilityHandler = nil
+        pipe = nil
         currentProcess = nil
         activeModel = nil
         status = .stopped
