@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-16
+
+_Patch release (Build 10) remediating 5 P1 findings from a security, concurrency & reliability audit._
+
+### Fixed
+- **Gateway Network Exposure:** `LocalAPIGateway` now binds only to `127.0.0.1` (`NWParameters.requiredLocalEndpoint`) instead of all interfaces, so the unauthenticated local LLM gateway is no longer reachable from other devices on the same LAN/WiFi (`[localmgr-b9v.1]`).
+- **Wildcard CORS:** replaced the hardcoded `Access-Control-Allow-Origin: *` with a reflected-origin policy that only allows same-machine origins (`127.0.0.1`/`localhost`/`::1`), preventing an arbitrary webpage open in the user's browser from cross-origin-fetching gateway responses (`[localmgr-b9v.1]`).
+- **Unbounded/Truncated Request Handling:** replaced a single fixed 64KB `connection.receive` with a proper `Content-Length`-aware accumulating reader and a 10MB hard cap (413 on overflow), instead of assuming every gateway request fits in one TCP packet (`[localmgr-b9v.2]`).
+- **Subprocess Pipe CPU Spin:** `BackendRunnerManager`'s stdout/stderr `readabilityHandler` now clears itself on EOF and in both termination/stop cleanup paths, fixing a known `Pipe`/`FileHandle` CPU-spin-after-process-exit hazard (`[localmgr-b9v.3]`).
+- **Runner Status Race:** the 2-second fallback status timer and termination cleanup now guard on process identity (`===`), not just status/`isRunning`, so stopping and immediately starting a different model can no longer let a stale callback corrupt the new session's state (`[localmgr-b9v.4]`).
+- **Catalog Scan UI Freeze:** `ModelCatalogService.refreshCatalog()` now runs directory enumeration and GGUF header parsing on a background `Task.detached` instead of synchronously on `@MainActor`, preventing UI beachballs on large vaults (`[localmgr-b9v.5]`).
+
 ## [0.5.1] - 2026-07-16
 
 _Patch release (Build 9) fixing the curated model catalog's broken download paths._
@@ -116,7 +128,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ghchinoy/localmgr/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/ghchinoy/localmgr/compare/v0.4.1...v0.4.2
