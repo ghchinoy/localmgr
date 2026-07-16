@@ -38,6 +38,22 @@ struct MenuBarView: View {
                         .foregroundColor(.accentColor)
                         .lineLimit(1)
                 }
+            } else if let error = downloader.lastError {
+                Divider()
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.red)
+                    Text(error)
+                        .font(.caption2)
+                        .foregroundColor(.red)
+                        .lineLimit(3)
+                    Spacer()
+                    Button(action: { downloader.lastError = nil }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             if let active = runner.activeModel {

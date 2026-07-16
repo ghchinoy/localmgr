@@ -221,6 +221,14 @@ struct HubDiscoveryView: View {
                 catalog.addFolder(appSettings.resolvedDownloadURL)
             }
         }
+        .alert("Download Failed", isPresented: Binding(
+            get: { downloader.lastError != nil },
+            set: { if !$0 { downloader.lastError = nil } }
+        )) {
+            Button("OK", role: .cancel) { downloader.lastError = nil }
+        } message: {
+            Text(downloader.lastError ?? "")
+        }
     }
 
     private func inspectDirectInput() {

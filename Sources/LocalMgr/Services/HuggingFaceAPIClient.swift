@@ -36,6 +36,31 @@ struct HFRepoFile: Identifiable {
     }
 }
 
+/// Shared Hugging Face Hub authentication helper.
+///
+/// Always probe `HF_TOKEN` and the cached CLI token before hitting any
+/// `huggingface.co` endpoint (browsing *or* downloading) so gated/private
+/// repositories authenticate consistently across the app.
+enum HFAuth {
+    static func tokenHeader() -> String? {
+        if let envToken = ProcessInfo.processInfo.environment["HF_TOKEN"], !envToken.isEmpty {
+            return "Bearer \(envToken)"
+        }
+        let tokenPath = NSHomeDirectory() + "/.cache/huggingface/token"
+        if let cached = try? String(contentsOfFile: tokenPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !cached.isEmpty {
+            return "Bearer \(cached)"
+        }
+        return nil
+    }
+
+    /// Applies the resolved `Authorization: Bearer <token>` header to a request, if a token is available.
+    static func apply(to request: inout URLRequest) {
+        if let auth = tokenHeader() {
+            request.setValue(auth, forHTTPHeaderField: "Authorization")
+        }
+    }
+}
+
 @MainActor
 class HuggingFaceAPIClient: ObservableObject {
     @Published var searchResults: [HFRepoItem] = []
@@ -86,16 +111,6 @@ class HuggingFaceAPIClient: ObservableObject {
         repoFiles = []
         errorMessage = nil
 
-        var tokenHeader: String? = nil
-        if let envToken = ProcessInfo.processInfo.environment["HF_TOKEN"], !envToken.isEmpty {
-            tokenHeader = "Bearer \(envToken)"
-        } else {
-            let tokenPath = NSHomeDirectory() + "/.cache/huggingface/token"
-            if let cached = try? String(contentsOfFile: tokenPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), !cached.isEmpty {
-                tokenHeader = "Bearer \(cached)"
-            }
-        }
-
         // Try recursive tree first, fallback to /api/models siblings if tree fails or is empty
         let urlStrings = [
             "https://huggingface.co/api/models/\(repoID)/tree/main?recursive=true",
@@ -107,7 +122,7 @@ class HuggingFaceAPIClient: ObservableObject {
         for urlString in urlStrings {
             guard let url = URL(string: urlString) else { continue }
             var req = URLRequest(url: url)
-            if let auth = tokenHeader { req.setValue(auth, forHTTPHeaderField: "Authorization") }
+            HFAuth.apply(to: &req)
 
             if let (data, response) = try? await URLSession.shared.data(for: req),
                let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {

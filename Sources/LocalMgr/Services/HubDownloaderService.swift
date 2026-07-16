@@ -31,6 +31,11 @@ class HubDownloaderService: ObservableObject {
     @Published var speedString: String = ""
     @Published var activeDownloads: [DownloadTaskItem] = []
 
+    /// Persists independently of `isDownloading` so failures remain visible
+    /// after the in-progress banner is torn down, instead of flashing and
+    /// disappearing in the same render pass.
+    @Published var lastError: String?
+
     let curatedCatalog: [CuratedModel] = [
         CuratedModel(
             name: "Cohere North Mini Code (7B Q4_K_M)",
@@ -61,6 +66,7 @@ class HubDownloaderService: ObservableObject {
     func downloadRepoFile(repoID: String, file: HFRepoFile, targetFolder: URL, catalog: ModelCatalogService) {
         guard !isDownloading else { return }
         isDownloading = true
+        lastError = nil
         activeModelName = file.filename
         progress = 0.0
         statusMessage = "Connecting..."
@@ -71,10 +77,14 @@ class HubDownloaderService: ObservableObject {
 
         let urlString = "https://huggingface.co/\(repoID)/resolve/main/\(file.path)"
         guard let url = URL(string: urlString) else {
-            statusMessage = "Invalid URL"
-            isDownloading = false
+            fail("Invalid URL for \(repoID)/\(file.path).")
             return
         }
+
+        var request = URLRequest(url: url)
+        // Always attach the HF token (env var or cached CLI token) so gated
+        // and private repositories authenticate the same way listing does.
+        HFAuth.apply(to: &request)
 
         let destinationURL = targetFolder.appendingPathComponent(file.filename)
         let startTime = Date()
@@ -82,12 +92,11 @@ class HubDownloaderService: ObservableObject {
         Task {
             do {
                 statusMessage = "Downloading \(file.filename)..."
-                let (tempURL, response) = try await URLSession.shared.download(from: url, delegate: nil)
+                let (tempURL, response) = try await URLSession.shared.download(for: request)
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
                     await MainActor.run {
-                        self.statusMessage = "Download failed: HTTP error"
-                        self.isDownloading = false
-                        self.activeDownloads.removeAll()
+                        self.fail(self.httpErrorMessage(statusCode: statusCode, repoID: repoID))
                     }
                     return
                 }
@@ -115,11 +124,30 @@ class HubDownloaderService: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    self.statusMessage = "Error: \(error.localizedDescription)"
-                    self.isDownloading = false
-                    self.activeDownloads.removeAll()
+                    self.fail("Error downloading \(file.filename): \(error.localizedDescription)")
                 }
             }
+        }
+    }
+
+    /// Records a download failure. `lastError` persists after `isDownloading`
+    /// flips back to false so the UI can surface it (e.g. via an alert)
+    /// instead of the in-progress banner disappearing with no explanation.
+    private func fail(_ message: String) {
+        statusMessage = message
+        lastError = message
+        isDownloading = false
+        activeDownloads.removeAll()
+    }
+
+    private func httpErrorMessage(statusCode: Int, repoID: String) -> String {
+        switch statusCode {
+        case 401, 403:
+            return "Download failed: \(repoID) requires Hugging Face authentication. Set HF_TOKEN or run `huggingface-cli login`, and make sure you've accepted the model's license on huggingface.co."
+        case 404:
+            return "Download failed: file not found in \(repoID) (HTTP 404)."
+        default:
+            return "Download failed: HTTP error (\(statusCode))."
         }
     }
 

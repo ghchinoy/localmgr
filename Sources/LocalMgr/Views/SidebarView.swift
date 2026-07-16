@@ -86,6 +86,23 @@ struct SidebarView: View {
                     }
                     .padding(.vertical, 2)
                 } else {
+                    if let error = downloader.lastError {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.red)
+                                .font(.caption2)
+                            Text(error)
+                                .font(.caption2)
+                                .foregroundColor(.red)
+                            Spacer()
+                            Button(action: { downloader.lastError = nil }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 2)
+                    }
                     ForEach(downloader.curatedCatalog) { item in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
