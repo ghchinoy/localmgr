@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-16
+
+_Minor release (Build 8) adding application-level diagnostic logging and an in-app Diagnostics viewer._
+
+### Added
+- **Unified Logging (`AppLog`):** all app-internal events (download/gateway/runner failures, auto-tuner decisions, bookmark I/O errors) now flow through `os.Logger` under subsystem `com.localmgr.mac`, inspectable in Console.app or via `log show --predicate 'subsystem == "com.localmgr.mac"'` even after the app has quit — previously the app had no unified-logging integration at all, only 2 stray `print()` calls (`[localmgr-cve.1]`, `[localmgr-cve.2]`).
+- **In-App Diagnostics Viewer:** new `DiagnosticsView` (`Cmd+Shift+L`, or Models → View App Diagnostics...) showing a live, filterable, category-tagged feed of the same events, distinct from the existing model-runner "Live Logs" tab which only shows spawned engine subprocess stdout/stderr (`[localmgr-cve.3]`).
+- **Copy / Export Diagnostics:** one-click "Copy" (clipboard) and "Export..." (timestamped `.log` file via save panel) actions in the Diagnostics viewer, so a user can attach real diagnostic output to a bug report instead of only describing symptoms after the fact (`[localmgr-cve.4]`).
+
 ## [0.4.2] - 2026-07-16
 
 _Patch release (Build 7) fixing Hugging Face Hub download authentication and error visibility._
@@ -98,7 +107,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ghchinoy/localmgr/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/ghchinoy/localmgr/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ghchinoy/localmgr/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ghchinoy/localmgr/compare/v0.3.0...v0.4.0
