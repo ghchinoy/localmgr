@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-16
+
+_Patch release (Build 9) fixing the curated model catalog's broken download paths._
+
+### Fixed
+- **Curated Catalog 404s:** all 3 entries in the curated Hugging Face Hub catalog pointed to repos that don't exist (`cohere/north-mini-code-gguf`, `google/gemma-2-9b-it-GGUF`, `meta-llama/Meta-Llama-3.1-8B-Instruct-GGUF`) — Google/Meta/Cohere don't publish GGUF quantizations under their own orgs. Every curated one-click download would 404/401. Corrected to the real, verified `bartowski/*` quantization repos (`[localmgr-3iz]`).
+- **Curated Size Labels:** corrected inaccurate `sizeFormatted` labels using real file sizes from the HF Hub tree API — "Cohere North Mini Code" was mislabeled as a 7B model at 4.8 GB when it's actually a 30B-A3B MoE at 18.7 GB; Gemma 2 9B IT was under-labeled at 5.4 GB vs actual 5.8 GB (`[localmgr-3iz]`).
+- **Curated Download Speed Calculation:** `CuratedModel` now carries its real byte size (`sizeBytes`), fixing `downloadModel()`, which previously hardcoded a `5_000_000_000`-byte placeholder for every curated model regardless of actual size, throwing off the post-download MB/s speed readout by up to ~4x (`[localmgr-3iz]`).
+
 ## [0.5.0] - 2026-07-16
 
 _Minor release (Build 8) adding application-level diagnostic logging and an in-app Diagnostics viewer._
@@ -107,7 +116,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ghchinoy/localmgr/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/ghchinoy/localmgr/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ghchinoy/localmgr/compare/v0.4.0...v0.4.1
