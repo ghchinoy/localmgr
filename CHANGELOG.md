@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-07-16
+
+_Patch release (Build 11) remediating 4 P2 findings from the security, concurrency & reliability audit._
+
+### Fixed
+- **Unbounded Log Growth:** `BackendRunnerManager.logOutput` now truncates to the last 100,000 characters via a `didSet` observer whenever it grows past that threshold, instead of growing unbounded across a long-running, verbose server session and slowing down the Live Logs view (`[localmgr-b9v.6]`).
+- **Security-Scoped Bookmark Leak:** added `ModelCatalogService.removeFolder(_:)` and `releaseAllFolderAccess()`, pairing every `startAccessingSecurityScopedResource()` call with a matching `stopAccessing...`. `AppDelegate.applicationWillTerminate` now releases all folder access on quit, mirroring the existing runner-process cleanup hook, instead of relying solely on implicit OS cleanup at process death (`[localmgr-b9v.7]`).
+- **Concurrent Model Swap Race:** `LocalAPIGateway` now serializes on-demand model swaps with an `isSwappingModel` guard. A second concurrent request for a different model gets an immediate 409 instead of being able to interleave its own launch during the first request's wait-for-ready polling loop, which could previously orphan or duplicate runner subprocesses (`[localmgr-b9v.8]`).
+- **Buffered Streaming Completions:** `"stream": true` chat completions are now forwarded incrementally as Server-Sent Events via a new streaming code path, instead of being fully buffered before the client receives anything — most chat UIs default to streaming mode and expect incremental tokens. Non-streaming completions are unaffected (`[localmgr-b9v.9]`).
+
 ## [0.5.2] - 2026-07-16
 
 _Patch release (Build 10) remediating 5 P1 findings from a security, concurrency & reliability audit._
@@ -128,7 +138,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/ghchinoy/localmgr/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ghchinoy/localmgr/compare/v0.4.2...v0.5.0
