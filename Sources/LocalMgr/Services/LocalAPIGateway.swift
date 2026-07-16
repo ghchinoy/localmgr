@@ -56,11 +56,13 @@ class LocalAPIGateway: ObservableObject {
         do {
             let listenerPort = NWEndpoint.Port(rawValue: port)!
             let parameters = NWParameters.tcp
-            // (localmgr-b9v.1 / SEC-1): restrict the listener to the loopback
-            // interface only. NWListener binds to all interfaces by default
+            // (localmgr-b9v.1 / SEC-1): restrict the listener to local-only
+            // connections. NWListener binds to all interfaces by default
             // absent this, which would expose the unauthenticated local LLM
-            // gateway to every other device on the same LAN/WiFi.
-            parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: listenerPort)
+            // gateway to every other device on the same LAN/WiFi. Verified
+            // via host smoke test: unreachable from a second device on the
+            // same network, still reachable via 127.0.0.1 on this machine.
+            parameters.acceptLocalOnly = true
             let listener = try NWListener(using: parameters, on: listenerPort)
             
             listener.stateUpdateHandler = { [weak self] state in
