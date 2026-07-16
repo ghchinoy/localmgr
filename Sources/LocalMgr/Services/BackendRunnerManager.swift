@@ -123,6 +123,7 @@ class BackendRunnerManager: ObservableObject {
         let elapsedMinutes = Date().timeIntervalSince(lastActivityDate) / 60.0
         if elapsedMinutes >= Double(settings.idleUnloadMinutes) {
             self.logOutput.append("\n[Idle Reclaimer]: Zero inference requests for \(settings.idleUnloadMinutes)m. Unloading model weights from VRAM to preserve system RAM.\n")
+            AppLog.info("Idle reclaimer unloading '\(activeModel?.name ?? "unknown model")' after \(settings.idleUnloadMinutes)m of inactivity", category: .runner)
             stopCurrent()
         }
     }
@@ -145,6 +146,7 @@ class BackendRunnerManager: ObservableObject {
         guard let binaryPath = resolveBinaryPath(name: binaryName) else {
             self.status = .error
             self.logOutput.append("ERROR: Could not find binary '\(binaryName)' in system PATH or App Support.\n")
+            AppLog.error("Could not find engine binary '\(binaryName)' for \(model.name) in system PATH or App Support", category: .runner)
             return
         }
 
@@ -160,6 +162,7 @@ class BackendRunnerManager: ObservableObject {
             if autoTuneEnabled {
                 let profile = HardwareAutoTuner.detectProfile(physicalMemoryBytes: Int64(ProcessInfo.processInfo.physicalMemory))
                 self.logOutput.append("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Injecting -ngl \(profile.recommendedGPULayers), --flash-attn on, ctx \(profile.maxSafeContext)\n")
+                AppLog.info("Auto-tuned \(model.name) for \(profile.rawModel): -ngl \(profile.recommendedGPULayers), ctx \(profile.maxSafeContext)", category: .runner)
                 args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "\(profile.recommendedGPULayers)", "-c", "\(min(defaultCtx, profile.maxSafeContext))", "--flash-attn", "on"]
             } else {
                 self.logOutput.append("[Hardware Auto-Tuner]: Opted out in Settings. Using manual flags (-ngl 99, ctx \(defaultCtx))\n")
@@ -169,6 +172,7 @@ class BackendRunnerManager: ObservableObject {
             if autoTuneEnabled {
                 let profile = HardwareAutoTuner.detectProfile(physicalMemoryBytes: Int64(ProcessInfo.processInfo.physicalMemory))
                 self.logOutput.append("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Optimizing MLX server launch.\n")
+                AppLog.info("Auto-tuned \(model.name) for \(profile.rawModel) (MLX)", category: .runner)
             }
             args = ["--model", model.fileURL.path, "--port", "\(port)"]
         case .kokoro:
@@ -208,9 +212,11 @@ class BackendRunnerManager: ObservableObject {
                 if code != 0 {
                     self.status = .error
                     self.logOutput.append("\n[Runner process terminated unexpectedly with exit code \(code)]\n")
+                    AppLog.error("Runner '\(model.name)' (\(binaryName)) terminated unexpectedly with exit code \(code)", category: .runner)
                 } else {
                     self.status = .stopped
                     self.logOutput.append("\n[Runner process exited cleanly]\n")
+                    AppLog.info("Runner '\(model.name)' (\(binaryName)) exited cleanly", category: .runner)
                 }
                 self.currentProcess = nil
                 self.activeModel = nil
@@ -220,6 +226,7 @@ class BackendRunnerManager: ObservableObject {
         do {
             try process.run()
             self.currentProcess = process
+            AppLog.info("Launched \(binaryName) for '\(model.name)' on port \(port)", category: .runner)
             // Fallback status change if no specific string matched within 2 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 if self.status == .starting && process.isRunning {
@@ -229,6 +236,7 @@ class BackendRunnerManager: ObservableObject {
         } catch {
             self.status = .error
             self.logOutput.append("Failed to launch process: \(error.localizedDescription)\n")
+            AppLog.error("Failed to launch \(binaryName) for '\(model.name)': \(error.localizedDescription)", category: .runner)
         }
     }
 
@@ -236,6 +244,7 @@ class BackendRunnerManager: ObservableObject {
         if let process = currentProcess, process.isRunning {
             process.terminate()
             self.logOutput.append("\n--- Terminated runner process ---\n")
+            AppLog.info("Manually terminated runner '\(activeModel?.name ?? "unknown model")'", category: .runner)
         }
         currentProcess = nil
         activeModel = nil

@@ -12,6 +12,7 @@ struct MainSplitView: View {
 
     @State private var showHubSheet: Bool = false
     @State private var showOpsDashboard: Bool = false
+    @State private var showDiagnostics: Bool = false
 
     var body: some View {
         NavigationSplitView {
@@ -77,6 +78,12 @@ struct MainSplitView: View {
                     }
                     .help("Discover and download models from Hugging Face Hub (Cmd+Shift+H)")
                     .keyboardShortcut("h", modifiers: [.command, .shift])
+
+                    Button(action: { showDiagnostics = true }) {
+                        Label("Diagnostics", systemImage: "stethoscope")
+                    }
+                    .help("View application diagnostic logs (Cmd+Shift+L)")
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
                 }
             }
         }
@@ -87,11 +94,17 @@ struct MainSplitView: View {
             OpsDashboardView()
                 .frame(minWidth: 820, minHeight: 560)
         }
+        .sheet(isPresented: $showDiagnostics) {
+            DiagnosticsView()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenHubDiscovery"))) { _ in
             showHubSheet = true
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenOpsDashboard"))) { _ in
             showOpsDashboard = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenDiagnostics"))) { _ in
+            showDiagnostics = true
         }
         .alert("Download Failed", isPresented: Binding(
             get: { downloader.lastError != nil },

@@ -69,7 +69,7 @@ class ModelCatalogService: ObservableObject {
             folders.append(url)
             refreshCatalog()
         } catch {
-            print("Failed to save bookmark for \(url): \(error)")
+            AppLog.error("Failed to save security-scoped bookmark for folder '\(url.lastPathComponent)': \(error.localizedDescription)", category: .catalog)
         }
     }
 
@@ -83,7 +83,7 @@ class ModelCatalogService: ObservableObject {
                     folders.append(url)
                 }
             } catch {
-                print("Failed to resolve bookmark: \(error)")
+                AppLog.error("Failed to resolve a saved folder bookmark: \(error.localizedDescription)", category: .catalog)
             }
         }
     }

@@ -91,7 +91,7 @@ class HubDownloaderService: ObservableObject {
             // If the server rejects it with 401/403, automatically retries once
             // without the token, since an expired/invalid cached token would
             // otherwise permanently block repos that are actually public.
-            let result = await HFAuth.requestWithFallback(url: url) { req in
+            let result = await HFAuth.requestWithFallback(url: url, logCategory: .downloads) { req in
                 try await URLSession.shared.download(for: req)
             }
 
@@ -123,6 +123,7 @@ class HubDownloaderService: ObservableObject {
                 activeDownloads.removeAll()
                 catalog.addFolder(targetFolder)
                 catalog.refreshCatalog()
+                AppLog.info("Installed \(file.filename) from \(repoID) into \(targetFolder.lastPathComponent)", category: .downloads)
             } catch {
                 self.fail("Error installing \(file.filename): \(error.localizedDescription)")
             }
@@ -137,6 +138,7 @@ class HubDownloaderService: ObservableObject {
         lastError = message
         isDownloading = false
         activeDownloads.removeAll()
+        AppLog.error(message, category: .downloads)
     }
 
     func downloadModel(_ model: CuratedModel, targetFolder: URL, catalog: ModelCatalogService) {

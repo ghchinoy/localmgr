@@ -55,12 +55,15 @@ class LocalAPIGateway: ObservableObject {
                     case .ready:
                         self?.isRunning = true
                         self?.lastLog = "Listening on http://127.0.0.1:\(self?.port ?? 4891)"
+                        AppLog.info("Gateway listening on port \(self?.port ?? 4891)", category: .gateway)
                     case .failed(let error):
                         self?.isRunning = false
                         self?.lastLog = "Gateway error: \(error.localizedDescription)"
+                        AppLog.error("Gateway listener failed: \(error.localizedDescription)", category: .gateway)
                     case .cancelled:
                         self?.isRunning = false
                         self?.lastLog = "Gateway stopped"
+                        AppLog.info("Gateway listener cancelled", category: .gateway)
                     default:
                         break
                     }
@@ -76,6 +79,7 @@ class LocalAPIGateway: ObservableObject {
         } catch {
             self.isRunning = false
             self.lastLog = "Failed to bind port \(port): \(error.localizedDescription)"
+            AppLog.error("Failed to bind gateway to port \(port): \(error.localizedDescription)", category: .gateway)
         }
     }
 
@@ -251,6 +255,7 @@ class LocalAPIGateway: ObservableObject {
         if let reqName = requestedModelName, runner.activeModel?.name != reqName {
             if let matched = catalog.models.first(where: { $0.name.localizedCaseInsensitiveContains(reqName) || reqName.localizedCaseInsensitiveContains($0.name) }) {
                 if runner.status == .running {
+                    AppLog.error("Gateway request for '\(matched.name)' conflicted with active runner '\(runner.activeModel?.name ?? "unknown")' (409)", category: .gateway)
                     sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: LocalMgr is currently running '\(runner.activeModel?.name ?? "another model")'. Stop current runner before starting '\(matched.name)'.\"}")
                     return
                 }
@@ -264,6 +269,7 @@ class LocalAPIGateway: ObservableObject {
             } else if runner.status == .running {
                 // If model name not found in catalog, but runner is running, fail fast if names conflict unless "default" or "local"
                 if reqName.lowercased() != "default" && reqName.lowercased() != "local" {
+                    AppLog.error("Gateway request for unknown model '\(reqName)' conflicted with active runner '\(runner.activeModel?.name ?? "unknown")' (409)", category: .gateway)
                     sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: Requested model '\(reqName)' not found in vault, and runner is active with '\(runner.activeModel?.name ?? "another model")'.\"}")
                     return
                 }
@@ -271,6 +277,7 @@ class LocalAPIGateway: ObservableObject {
         }
 
         guard runner.status == .running || runner.activeModel != nil else {
+            AppLog.info("Gateway received a completion request with no runner active (503)", category: .gateway)
             sendHTTPResponse(connection: connection, status: 503, body: "{\"error\":\"No local model runner active or ready on port \(runner.port)\"}")
             return
         }
@@ -330,6 +337,7 @@ class LocalAPIGateway: ObservableObject {
                 sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Invalid response encoding from backend\"}")
             }
         } catch {
+            AppLog.error("Proxy request to local engine failed: \(error.localizedDescription)", category: .gateway)
             sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Proxy error: \(error.localizedDescription)\"}")
         }
     }

@@ -85,6 +85,7 @@ enum HFAuth {
     /// report that a token was tried and still wasn't sufficient.
     static func requestWithFallback<T: Sendable>(
         url: URL,
+        logCategory: LogCategory = .hub,
         perform: @Sendable (URLRequest) async throws -> (T, URLResponse)
     ) async -> AttemptResult<T> {
         let hadToken = tokenHeader() != nil
@@ -100,19 +101,24 @@ enum HFAuth {
             }
 
             // Retry unauthenticated in case the token itself (not the repo) is the problem.
+            AppLog.info("HF token rejected (HTTP \(statusCode)) for \(url.host ?? "huggingface.co"); retrying unauthenticated", category: logCategory)
             do {
                 let fallbackRequest = URLRequest(url: url)
                 let (fallbackValue, fallbackResponse) = try await perform(fallbackRequest)
                 let fallbackStatus = (fallbackResponse as? HTTPURLResponse)?.statusCode ?? -1
                 if fallbackStatus == 200 {
+                    AppLog.info("Unauthenticated retry succeeded; repo is public and the cached token was stale/invalid", category: logCategory)
                     return AttemptResult(value: fallbackValue, statusCode: 200, tokenWasSent: false, transportErrorDescription: nil)
                 }
+                AppLog.error("Unauthenticated retry also failed (HTTP \(fallbackStatus)) -- repo genuinely requires a valid token", category: logCategory)
                 return AttemptResult(value: nil, statusCode: fallbackStatus, tokenWasSent: true, transportErrorDescription: nil)
             } catch {
                 // Fallback attempt failed at the transport level; report the original auth rejection instead.
+                AppLog.error("Unauthenticated retry failed at the transport level: \(error.localizedDescription)", category: logCategory)
                 return AttemptResult(value: nil, statusCode: statusCode, tokenWasSent: true, transportErrorDescription: nil)
             }
         } catch {
+            AppLog.error("Request to \(url.host ?? "huggingface.co") failed: \(error.localizedDescription)", category: logCategory)
             return AttemptResult(value: nil, statusCode: nil, tokenWasSent: hadToken, transportErrorDescription: error.localizedDescription)
         }
     }
@@ -181,6 +187,7 @@ class HuggingFaceAPIClient: ObservableObject {
             self.isSearching = false
         } catch {
             self.errorMessage = "Search error: \(error.localizedDescription)"
+            AppLog.error("Hub search for '\(query)' failed: \(error.localizedDescription)", category: .hub)
             self.isSearching = false
         }
     }
@@ -246,6 +253,7 @@ class HuggingFaceAPIClient: ObservableObject {
             } else {
                 self.errorMessage = "No downloadable model weight files (.gguf, .safetensors, .tflite, .onnx) found in repository tree."
             }
+            AppLog.error("Repo inspection failed for \(repoID): \(self.errorMessage ?? "unknown error")", category: .hub)
         } else {
             self.repoFiles = extracted
         }

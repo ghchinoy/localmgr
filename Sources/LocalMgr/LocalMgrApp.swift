@@ -73,6 +73,13 @@ struct LocalMgrApp: App {
                     NotificationCenter.default.post(name: NSNotification.Name("OpenHubDiscovery"), object: nil)
                 }
                 .keyboardShortcut("h", modifiers: [.command, .shift])
+
+                Divider()
+
+                Button("View App Diagnostics...") {
+                    NotificationCenter.default.post(name: NSNotification.Name("OpenDiagnostics"), object: nil)
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
             }
         }
 
