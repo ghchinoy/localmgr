@@ -59,6 +59,85 @@ enum HFAuth {
             request.setValue(auth, forHTTPHeaderField: "Authorization")
         }
     }
+
+    /// Outcome of a request attempted through `requestWithFallback`.
+    struct AttemptResult<T: Sendable>: Sendable {
+        /// The decoded/downloaded value, only present when `statusCode == 200`.
+        let value: T?
+        /// The final HTTP status code observed (from whichever attempt was decisive), or `nil` on a transport-level error.
+        let statusCode: Int?
+        /// Whether an `Authorization` header was sent on the attempt that produced `statusCode`.
+        let tokenWasSent: Bool
+        /// `localizedDescription` of a transport-level error (DNS, TLS, offline, etc.), if the request never completed.
+        let transportErrorDescription: String?
+    }
+
+    /// Performs `perform` with the resolved HF token attached (if any). If the
+    /// server rejects that with `401`/`403`, retries once **without** the
+    /// token: an expired/invalid cached token would otherwise permanently
+    /// block repos that are actually public, since HF rejects bad
+    /// credentials outright rather than falling back to anonymous access.
+    ///
+    /// If the unauthenticated retry succeeds, the repo was public all along
+    /// and the result is returned as a success. If it also fails, the
+    /// fallback's status code is returned (reflecting the repo's true
+    /// authentication requirement) with `tokenWasSent = true` so callers can
+    /// report that a token was tried and still wasn't sufficient.
+    static func requestWithFallback<T: Sendable>(
+        url: URL,
+        perform: @Sendable (URLRequest) async throws -> (T, URLResponse)
+    ) async -> AttemptResult<T> {
+        let hadToken = tokenHeader() != nil
+        var request = URLRequest(url: url)
+        apply(to: &request)
+
+        do {
+            let (value, response) = try await perform(request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+
+            guard hadToken, statusCode == 401 || statusCode == 403 else {
+                return AttemptResult(value: statusCode == 200 ? value : nil, statusCode: statusCode, tokenWasSent: hadToken, transportErrorDescription: nil)
+            }
+
+            // Retry unauthenticated in case the token itself (not the repo) is the problem.
+            do {
+                let fallbackRequest = URLRequest(url: url)
+                let (fallbackValue, fallbackResponse) = try await perform(fallbackRequest)
+                let fallbackStatus = (fallbackResponse as? HTTPURLResponse)?.statusCode ?? -1
+                if fallbackStatus == 200 {
+                    return AttemptResult(value: fallbackValue, statusCode: 200, tokenWasSent: false, transportErrorDescription: nil)
+                }
+                return AttemptResult(value: nil, statusCode: fallbackStatus, tokenWasSent: true, transportErrorDescription: nil)
+            } catch {
+                // Fallback attempt failed at the transport level; report the original auth rejection instead.
+                return AttemptResult(value: nil, statusCode: statusCode, tokenWasSent: true, transportErrorDescription: nil)
+            }
+        } catch {
+            return AttemptResult(value: nil, statusCode: nil, tokenWasSent: hadToken, transportErrorDescription: error.localizedDescription)
+        }
+    }
+
+    /// Builds an actionable message for a non-200 HF response, distinguishing
+    /// an invalid/expired token (401) from a valid token lacking access to a
+    /// gated repo (403) rather than collapsing both into one generic string.
+    static func describeError(statusCode: Int, repoID: String, tokenWasSent: Bool) -> String {
+        switch statusCode {
+        case 401:
+            if tokenWasSent {
+                return "Your Hugging Face token was rejected as invalid or expired, and \(repoID) requires authentication. Refresh HF_TOKEN or run `huggingface-cli login` again."
+            }
+            return "\(repoID) requires Hugging Face authentication. Set HF_TOKEN or run `huggingface-cli login`."
+        case 403:
+            if tokenWasSent {
+                return "Your Hugging Face token doesn't have access to \(repoID). Visit https://huggingface.co/\(repoID) to accept the model's license, then retry."
+            }
+            return "\(repoID) is gated. Accept the model's license at https://huggingface.co/\(repoID) and set HF_TOKEN, then retry."
+        case 404:
+            return "\(repoID) or the requested file was not found (HTTP 404)."
+        default:
+            return "HTTP error (\(statusCode)) from Hugging Face."
+        }
+    }
 }
 
 @MainActor
@@ -118,15 +197,21 @@ class HuggingFaceAPIClient: ObservableObject {
         ]
 
         var extracted: [HFRepoFile] = []
+        // Tracks the most informative non-200 outcome across both URL attempts,
+        // so a genuine auth/HTTP failure isn't masked by the generic "no files
+        // found" message once every variant has been tried.
+        var lastFailureStatusCode: Int?
+        var lastFailureTokenWasSent = false
+        var lastTransportErrorDescription: String?
 
         for urlString in urlStrings {
             guard let url = URL(string: urlString) else { continue }
-            var req = URLRequest(url: url)
-            HFAuth.apply(to: &req)
 
-            if let (data, response) = try? await URLSession.shared.data(for: req),
-               let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                
+            let result = await HFAuth.requestWithFallback(url: url) { req in
+                try await URLSession.shared.data(for: req)
+            }
+
+            if let data = result.value, result.statusCode == 200 {
                 if let jsonList = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
                     for item in jsonList {
                         guard let path = item["path"] as? String else { continue }
@@ -145,12 +230,22 @@ class HuggingFaceAPIClient: ObservableObject {
                         }
                     }
                 }
+            } else {
+                lastFailureStatusCode = result.statusCode
+                lastFailureTokenWasSent = result.tokenWasSent
+                lastTransportErrorDescription = result.transportErrorDescription
             }
             if !extracted.isEmpty { break }
         }
 
         if extracted.isEmpty {
-            self.errorMessage = "No downloadable model weight files (.gguf, .safetensors, .tflite, .onnx) found in repository tree."
+            if let description = lastTransportErrorDescription {
+                self.errorMessage = "Couldn't reach Hugging Face: \(description)"
+            } else if let statusCode = lastFailureStatusCode, statusCode != 200 {
+                self.errorMessage = HFAuth.describeError(statusCode: statusCode, repoID: repoID, tokenWasSent: lastFailureTokenWasSent)
+            } else {
+                self.errorMessage = "No downloadable model weight files (.gguf, .safetensors, .tflite, .onnx) found in repository tree."
+            }
         } else {
             self.repoFiles = extracted
         }

@@ -127,6 +127,21 @@ struct HubDiscoveryView: View {
                         if hfClient.isLoadingFiles {
                             ProgressView("Inspecting weight files...")
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else if let error = hfClient.errorMessage {
+                            VStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.orange)
+                                Text(error)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                Button("Retry") {
+                                    Task { await hfClient.inspectRepoFiles(repoID: repoID) }
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                            .padding()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else if hfClient.repoFiles.isEmpty {
                             Text("No compatible weight files found (.gguf, .safetensors, .tflite, .onnx).")
                                 .foregroundColor(.secondary)

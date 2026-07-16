@@ -81,51 +81,50 @@ class HubDownloaderService: ObservableObject {
             return
         }
 
-        var request = URLRequest(url: url)
-        // Always attach the HF token (env var or cached CLI token) so gated
-        // and private repositories authenticate the same way listing does.
-        HFAuth.apply(to: &request)
-
         let destinationURL = targetFolder.appendingPathComponent(file.filename)
         let startTime = Date()
 
         Task {
-            do {
-                statusMessage = "Downloading \(file.filename)..."
-                let (tempURL, response) = try await URLSession.shared.download(for: request)
-                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                    let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-                    await MainActor.run {
-                        self.fail(self.httpErrorMessage(statusCode: statusCode, repoID: repoID))
-                    }
-                    return
-                }
+            statusMessage = "Downloading \(file.filename)..."
 
+            // Attaches the HF token (env var or cached CLI token) when available.
+            // If the server rejects it with 401/403, automatically retries once
+            // without the token, since an expired/invalid cached token would
+            // otherwise permanently block repos that are actually public.
+            let result = await HFAuth.requestWithFallback(url: url) { req in
+                try await URLSession.shared.download(for: req)
+            }
+
+            guard result.statusCode == 200, let tempURL = result.value else {
+                if let description = result.transportErrorDescription {
+                    self.fail("Error downloading \(file.filename): \(description)")
+                } else {
+                    let statusCode = result.statusCode ?? -1
+                    self.fail("Download failed: \(HFAuth.describeError(statusCode: statusCode, repoID: repoID, tokenWasSent: result.tokenWasSent))")
+                }
+                return
+            }
+
+            do {
                 let elapsed = Date().timeIntervalSince(startTime)
                 let mb = Double(file.sizeBytes) / 1_048_576.0
                 let mbs = elapsed > 0 ? mb / elapsed : 0.0
-                await MainActor.run {
-                    self.speedString = String(format: "%.1f MB/s", mbs)
-                    self.statusMessage = "Verifying integrity..."
-                }
+                speedString = String(format: "%.1f MB/s", mbs)
+                statusMessage = "Verifying integrity..."
 
                 if FileManager.default.fileExists(atPath: destinationURL.path) {
                     try FileManager.default.removeItem(at: destinationURL)
                 }
                 try FileManager.default.moveItem(at: tempURL, to: destinationURL)
 
-                await MainActor.run {
-                    self.statusMessage = "Installed \(file.filename)"
-                    self.isDownloading = false
-                    self.progress = 1.0
-                    self.activeDownloads.removeAll()
-                    catalog.addFolder(targetFolder)
-                    catalog.refreshCatalog()
-                }
+                statusMessage = "Installed \(file.filename)"
+                isDownloading = false
+                progress = 1.0
+                activeDownloads.removeAll()
+                catalog.addFolder(targetFolder)
+                catalog.refreshCatalog()
             } catch {
-                await MainActor.run {
-                    self.fail("Error downloading \(file.filename): \(error.localizedDescription)")
-                }
+                self.fail("Error installing \(file.filename): \(error.localizedDescription)")
             }
         }
     }
@@ -138,17 +137,6 @@ class HubDownloaderService: ObservableObject {
         lastError = message
         isDownloading = false
         activeDownloads.removeAll()
-    }
-
-    private func httpErrorMessage(statusCode: Int, repoID: String) -> String {
-        switch statusCode {
-        case 401, 403:
-            return "Download failed: \(repoID) requires Hugging Face authentication. Set HF_TOKEN or run `huggingface-cli login`, and make sure you've accepted the model's license on huggingface.co."
-        case 404:
-            return "Download failed: file not found in \(repoID) (HTTP 404)."
-        default:
-            return "Download failed: HTTP error (\(statusCode))."
-        }
     }
 
     func downloadModel(_ model: CuratedModel, targetFolder: URL, catalog: ModelCatalogService) {
