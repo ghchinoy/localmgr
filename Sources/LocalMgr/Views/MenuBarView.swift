@@ -61,6 +61,10 @@ struct MenuBarView: View {
                     Circle()
                         .fill(Color.green)
                         .frame(width: 8, height: 8)
+                        // (localmgr-b9v.10 / ACC-1): color-only status dots
+                        // convey nothing to VoiceOver by default.
+                        .accessibilityLabel("Runner status")
+                        .accessibilityValue(runner.status.rawValue)
                     Text(active.name)
                         .lineLimit(1)
                     Spacer()
