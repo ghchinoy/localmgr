@@ -69,3 +69,5 @@ export.auto: true
 dolt.mode: "server"
 dolt.database: "localmgr"
 dolt.port: 56669
+sync:
+    remote: "git+ssh://git@github.com/ghchinoy/localmgr.git"
