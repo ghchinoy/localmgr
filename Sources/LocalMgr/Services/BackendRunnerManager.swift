@@ -13,7 +13,20 @@ class BackendRunnerManager: ObservableObject {
     @Published var activeModel: ModelItem?
     @Published var lastRunModelID: UUID?
     @Published var status: RunnerStatus = .stopped
-    @Published var logOutput: String = ""
+    /// (localmgr-b9v.6 / REL-2): capped to `maxLogOutputCharacters` via
+    /// `didSet` so a long-running, verbose server session can't grow this
+    /// string unbounded -- it's appended to on every stdout/stderr chunk and
+    /// bound directly to a `Text` view, so unbounded growth both wastes
+    /// memory and slows down rendering. Every existing append/assignment
+    /// call site is covered automatically without needing individual edits.
+    @Published var logOutput: String = "" {
+        didSet {
+            if logOutput.count > Self.maxLogOutputCharacters {
+                logOutput = String(logOutput.suffix(Self.maxLogOutputCharacters))
+            }
+        }
+    }
+    private static let maxLogOutputCharacters = 100_000
     @Published var port: Int = 8080
     @Published var lastPingResponse: String = ""
     @Published var isPinging: Bool = false

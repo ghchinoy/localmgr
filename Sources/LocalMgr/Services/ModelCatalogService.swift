@@ -88,6 +88,42 @@ class ModelCatalogService: ObservableObject {
         }
     }
 
+    /// (localmgr-b9v.7 / SEC-3): explicit teardown pairing every
+    /// `startAccessingSecurityScopedResource()` call in `addFolder`/
+    /// `loadBookmarkedFolders` with a matching `stopAccessing...` when a
+    /// folder is removed from the vault, rather than only relying on the
+    /// OS to revoke access at process exit.
+    func removeFolder(_ url: URL) {
+        guard let index = folders.firstIndex(of: url) else { return }
+        url.stopAccessingSecurityScopedResource()
+        folders.remove(at: index)
+
+        if let bookmarkDataArray = UserDefaults.standard.array(forKey: bookmarksKey) as? [Data] {
+            let remaining = bookmarkDataArray.filter { data in
+                var isStale = false
+                guard let resolved = try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale) else {
+                    return true // Keep unresolvable entries rather than silently dropping them.
+                }
+                return resolved != url
+            }
+            UserDefaults.standard.set(remaining, forKey: bookmarksKey)
+        }
+
+        refreshCatalog()
+    }
+
+    /// (localmgr-b9v.7 / SEC-3): releases every outstanding security-scoped
+    /// access grant. Called from `AppDelegate.applicationWillTerminate`
+    /// (mirroring the existing `runnerManager.stopCurrent()` orphan-prevention
+    /// hook) so every `startAccessingSecurityScopedResource()` call this
+    /// session is paired with a `stopAccessing...` by the time the app exits,
+    /// rather than relying solely on implicit OS cleanup at process death.
+    func releaseAllFolderAccess() {
+        for url in folders {
+            url.stopAccessingSecurityScopedResource()
+        }
+    }
+
     /// Kicks off a full directory scan + GGUF header parse in the background
     /// and publishes the result when done. `refreshCatalog()` itself stays a
     /// fire-and-forget, non-async call so every existing call site (app

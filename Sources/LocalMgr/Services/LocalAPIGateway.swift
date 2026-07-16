@@ -10,6 +10,14 @@ class LocalAPIGateway: ObservableObject {
     @Published var lastLog: String = "Gateway stopped"
 
     private var listener: NWListener?
+    /// (localmgr-b9v.8 / RACE-3): guards the on-demand model swap + wait-for-
+    /// ready sequence below. Both `handleChatCompletions` and the actual
+    /// process swap are MainActor-isolated, but the `Task.sleep` polling
+    /// loop reintroduces the actor to other work while suspended -- so two
+    /// concurrent requests for two different models could otherwise both
+    /// pass the `runner.status == .running` conflict check, then interleave
+    /// `startModel()` calls and orphan/duplicate runner subprocesses.
+    private var isSwappingModel = false
     private weak var catalog: ModelCatalogService?
     private weak var runner: BackendRunnerManager?
     private weak var appSettings: AppSettings?
@@ -325,9 +333,11 @@ class LocalAPIGateway: ObservableObject {
         }
 
         var requestedModelName: String?
+        var isStreaming = false
         if let bodyData = bodyData,
            let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] {
             requestedModelName = json["model"] as? String
+            isStreaming = (json["stream"] as? Bool) ?? false
         }
 
         if let reqName = requestedModelName, runner.activeModel?.name != reqName {
@@ -337,6 +347,17 @@ class LocalAPIGateway: ObservableObject {
                     sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: LocalMgr is currently running '\(runner.activeModel?.name ?? "another model")'. Stop current runner before starting '\(matched.name)'.\"}", allowedOrigin: allowedOrigin)
                     return
                 }
+                // (localmgr-b9v.8 / RACE-3): reject rather than interleave if
+                // another on-demand swap is already in flight -- see the
+                // `isSwappingModel` declaration for why this window is racy.
+                guard !isSwappingModel else {
+                    AppLog.error("Gateway request for '\(matched.name)' arrived while another model swap was in progress (409)", category: .gateway)
+                    sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: Another model swap is already in progress. Retry shortly.\"}", allowedOrigin: allowedOrigin)
+                    return
+                }
+                isSwappingModel = true
+                defer { isSwappingModel = false }
+
                 updateLastLog("On-demand wake: starting \(matched.name)...")
                 runner.startModel(matched)
                 
@@ -366,6 +387,14 @@ class LocalAPIGateway: ObservableObject {
         proxyReq.httpBody = bodyData
         proxyReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
         proxyReq.timeoutInterval = 1800.0
+
+        // (localmgr-b9v.9 / REL-4): "stream": true completions expect
+        // incremental `data: {...}` SSE chunks, not one fully-buffered
+        // response at the end -- most chat UIs default to this mode.
+        if isStreaming {
+            await streamChatCompletion(proxyReq: proxyReq, connection: connection, allowedOrigin: allowedOrigin, runner: runner)
+            return
+        }
 
         let startTime = CFAbsoluteTimeGetCurrent()
         do {
@@ -417,6 +446,75 @@ class LocalAPIGateway: ObservableObject {
         } catch {
             AppLog.error("Proxy request to local engine failed: \(error.localizedDescription)", category: .gateway)
             sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Proxy error: \(error.localizedDescription)\"}", allowedOrigin: allowedOrigin)
+        }
+    }
+
+    /// (localmgr-b9v.9 / REL-4): forwards the local engine's Server-Sent
+    /// Events bytes to the client as they arrive instead of buffering the
+    /// entire response first. Sends the response header block once up front
+    /// (no `Content-Length` -- size is unknown ahead of time; the client is
+    /// expected to read until the connection closes, matching `Connection:
+    /// close`), then relays chunks as they're produced by the upstream
+    /// engine.
+    ///
+    /// Known limitation: token/prompt accounting for streamed completions is
+    /// a byte-count estimate (mirroring the non-streaming path's own
+    /// fallback for responses without a `usage` object) rather than parsed
+    /// from the SSE payload, since most local engines only emit `usage` in
+    /// the final chunk when explicitly requested via `stream_options`.
+    private func streamChatCompletion(proxyReq: URLRequest, connection: NWConnection, allowedOrigin: String?, runner: BackendRunnerManager) async {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        // Tracks whether the response header block has already gone out, so
+        // an error mid-stream can't attempt to send a second (JSON error)
+        // response on a connection that's already mid-SSE-stream.
+        var headerSent = false
+        do {
+            let (byteStream, httpResp) = try await proxySession.bytes(for: proxyReq)
+            let statusCode = (httpResp as? HTTPURLResponse)?.statusCode ?? 200
+
+            var headerLines = [
+                "HTTP/1.1 \(statusCode) \(statusCode == 200 ? "OK" : "Error")",
+                "Content-Type: text/event-stream",
+                "Cache-Control: no-cache",
+                "Connection: close"
+            ]
+            if let allowedOrigin {
+                headerLines.append("Access-Control-Allow-Origin: \(allowedOrigin)")
+                headerLines.append("Vary: Origin")
+            }
+            connection.send(content: Data((headerLines.joined(separator: "\r\n") + "\r\n\r\n").utf8), completion: .idempotent)
+            headerSent = true
+
+            var totalBytes = 0
+            var chunk = Data()
+            chunk.reserveCapacity(4096)
+            for try await byte in byteStream {
+                chunk.append(byte)
+                totalBytes += 1
+                if chunk.count >= 4096 {
+                    connection.send(content: chunk, completion: .idempotent)
+                    chunk.removeAll(keepingCapacity: true)
+                }
+            }
+
+            let durationMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
+            runner.recordTelemetry(ttftMs: durationMs, durationMs: durationMs, completionTokens: max(1, totalBytes / 4))
+            AppLog.info("Streamed chat completion: \(totalBytes) bytes forwarded in \(Int(durationMs))ms", category: .gateway)
+
+            if !chunk.isEmpty {
+                connection.send(content: chunk, completion: .contentProcessed { _ in connection.cancel() })
+            } else {
+                connection.cancel()
+            }
+        } catch {
+            AppLog.error("Streaming proxy request to local engine failed: \(error.localizedDescription)", category: .gateway)
+            if headerSent {
+                // Already mid-stream on the client's connection; can't send a
+                // clean JSON error response at this point, so just close.
+                connection.cancel()
+            } else {
+                sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Streaming proxy error: \(error.localizedDescription)\"}", allowedOrigin: allowedOrigin)
+            }
         }
     }
 

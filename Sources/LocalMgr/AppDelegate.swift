@@ -11,6 +11,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if appSettings?.terminateRunnersOnQuit ?? true {
             runnerManager?.stopCurrent()
         }
+        // (localmgr-b9v.7 / SEC-3): release all outstanding security-scoped
+        // bookmark access grants on quit, pairing every
+        // startAccessingSecurityScopedResource() call made this session.
+        catalogService?.releaseAllFolderAccess()
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
