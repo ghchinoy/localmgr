@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-07-16
+
+_Patch release (Build 7) fixing Hugging Face Hub download authentication and error visibility._
+
+### Fixed
+- **HF Download Authentication:** attach the resolved `HF_TOKEN` / cached CLI token to the actual model download request (`resolve/main/<file>`) in `HubDownloaderService`, not just repo-listing calls. Gated repos — including the built-in `meta-llama/Meta-Llama-3.1-8B-Instruct-GGUF` curated entry — previously failed with an instant, unauthenticated 401/403.
+- **Disappearing Download Notification:** decouple the download error message from the `isDownloading` flag that tears down the in-progress banner. A persistent `lastError` is now surfaced via `.alert()` and dismissible inline banners so failures no longer flash and disappear before they can be read.
+- **Unauthenticated Retry Fallback:** automatically retry Hub Discovery listing and downloads without the `Authorization` header when a token is rejected with 401/403, so a stale/expired `HF_TOKEN` no longer permanently blocks repositories that are actually public (`[localmgr-dt2.1]`).
+- **Silent Repo Inspection Failures:** `HubDiscoveryView` now surfaces `HuggingFaceAPIClient.errorMessage` (warning icon + Retry button) instead of always showing a generic "no compatible weight files" message regardless of the actual failure cause (`[localmgr-dt2.2]`).
+- **Actionable Gated-Model Errors:** distinguish HTTP 401 (invalid/expired token) from 403 (valid token, license not accepted) with specific remediation guidance, shared by the downloader and Hub inspector (`[localmgr-dt2.3]`).
+
 ## [0.4.1] - 2026-07-03
 
 _Patch release (Build 6) delivering 30-minute reverse proxy timeouts, recursive Hugging Face Hub tree discovery with token authorization, clickable UI speedometers, and modal sheet dismiss controls._
@@ -87,7 +98,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/ghchinoy/localmgr/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ghchinoy/localmgr/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ghchinoy/localmgr/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ghchinoy/localmgr/compare/v0.2.0...v0.3.0
