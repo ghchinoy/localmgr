@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-07-16
+
+_Patch release (Build 12) completing the security, concurrency & reliability audit with VoiceOver accessibility labels._
+
+### Fixed
+- **VoiceOver Status Dots:** added `accessibilityLabel`/`accessibilityValue` to all 4 color-only status-dot indicators (API Gateway online/offline, Active Runner status, per-engine Component Readiness, and the menu bar's active-model dot) — a plain colored `Circle()` previously conveyed nothing to VoiceOver (`[localmgr-b9v.10]`).
+
+This closes out the full `localmgr-b9v` security, concurrency & reliability audit epic: 10/10 findings (5 P1 in `v0.5.2`, 4 P2 in `v0.5.3`, 1 P3 here) implemented and host-verified.
+
 ## [0.5.3] - 2026-07-16
 
 _Patch release (Build 11) remediating 4 P2 findings from the security, concurrency & reliability audit._
@@ -139,7 +148,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/ghchinoy/localmgr/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/ghchinoy/localmgr/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...v0.5.1
