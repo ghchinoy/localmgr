@@ -5,12 +5,23 @@ struct ModelInspectorView: View {
     @EnvironmentObject var runner: BackendRunnerManager
     @EnvironmentObject var monitor: SystemMonitorService
     @EnvironmentObject var readiness: EngineReadinessService
+    @EnvironmentObject var settings: AppSettings
 
     @State private var selectedTab: Int = 0
     @State private var contextLengthSlider: Double = 8192
 
+    /// 3-state badge (see `ModelListView.swift`): `.ready`, `.missing`
+    /// (binary not installed), or `.disabled` (turned off in Settings).
+    var engineBadgeState: EngineReadinessBadgeState {
+        engineReadinessBadgeState(for: model.engineType, settings: settings, readiness: readiness)
+    }
+
+    /// Whether the "Start Runner" action should be permitted -- only in the
+    /// `.ready` state. Kept as a separate boolean (rather than inlining
+    /// `engineBadgeState == .ready` at each call site) since this is the
+    /// specific gate the Start button and idle-state checks both need.
     var isEngineReady: Bool {
-        readiness.isReady(for: model.engineType)
+        engineBadgeState == .ready
     }
 
     var st: EngineComponentStatus {
@@ -78,7 +89,10 @@ struct ModelInspectorView: View {
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(10)
 
-            if !isEngineReady {
+            switch engineBadgeState {
+            case .ready:
+                EmptyView()
+            case .missing:
                 HStack {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
@@ -88,6 +102,17 @@ struct ModelInspectorView: View {
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.orange.opacity(0.15))
+                .cornerRadius(8)
+            case .disabled:
+                HStack {
+                    Image(systemName: "power.circle.fill")
+                        .foregroundColor(.secondary)
+                    Text("Engine Disabled: \(model.engineType.rawValue) is turned off in Settings → Hardware & Engines. Enable it there to run this model.")
+                        .font(.subheadline)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.12))
                 .cornerRadius(8)
             }
 

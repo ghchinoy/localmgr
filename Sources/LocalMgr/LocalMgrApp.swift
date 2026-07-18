@@ -31,6 +31,7 @@ struct LocalMgrApp: App {
                     appDelegate.catalogService = catalogService
                     appDelegate.appSettings = appSettings
                     runnerManager.configure(settings: appSettings)
+                    readinessService.configure(settings: appSettings)
                     monitorService.configure(runner: runnerManager)
                     gateway.configure(catalog: catalogService, runner: runnerManager, settings: appSettings, telemetry: telemetryStore)
                     if !catalogService.folders.contains(appSettings.resolvedDownloadURL) {
@@ -86,6 +87,7 @@ struct LocalMgrApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appSettings)
+                .environmentObject(readinessService)
         }
 
         MenuBarExtra {

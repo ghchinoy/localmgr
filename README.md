@@ -9,7 +9,7 @@
 ## Value Proposition & Scope
 
 ### What LocalMgr Solves
-- **Multi-Engine Orchestration**: Manages local execution lifecycles for four distinct model formats: GGUF (`llama-server`), Apple MLX Safetensors (`mlx_lm.server`), Google AI Edge LiteRT `.tflite` (`litert-lm` / `litert-benchmark`), and Kokoro RS / ONNX audio TTS (`kokoro-server`).
+- **Multi-Engine Orchestration**: Manages local execution lifecycles across three enabled-by-default model formats: GGUF (`llama-server`), Apple MLX Safetensors (`mlx_lm.server`), and Google AI Edge LiteRT `.tflite` (`litert-lm` / `litert-benchmark`). Kokoro RS / ONNX audio TTS (`kokoro-server`) and `gemma.cpp` are also supported but ship **off by default as experimental engines** — see [Enabling Experimental Engines](#enabling-experimental-engines-kokoro-tts--gemmacpp) below.
 - **Zero-Copy Unified Memory Protection**: Leverages native Apple Silicon hardware telemetry (`vm_stat`, `mach_host_basic_info`) to compute a real-time **Predictive Fit Score** before loading models, preventing system freezes and swap thrashing.
 - **Kernel Memory Hooks**: Registers macOS kernel memory pressure event sources (`DISPATCH_SOURCE_TYPE_MEMORYPRESSURE`) to proactively drain or unload idle runners before operating system swap thrashing occurs.
 - **Transparent API Gateway**: Embeds a reverse proxy on port `4891` (`http://127.0.0.1:4891/v1`) that dynamically routes requests, auto-wakes stopped model runners on demand, and supports live port rebinding.
@@ -49,7 +49,20 @@ uv tool install huggingface_hub
 uv tool install ai-edge-litert
 ```
 
-> **Note on Kokoro TTS**: For audio generation, place the compiled `kokoro-server` binary into your `$PATH` or directly into `~/Library/Application Support/LocalMgr/Engines/`.
+> **Note on Kokoro TTS**: Kokoro is an experimental, off-by-default engine (see below). If you enable it in Settings, place the compiled `kokoro-server` binary into your `$PATH` or directly into `~/Library/Application Support/LocalMgr/Engines/`.
+
+---
+
+## Enabling Experimental Engines (Kokoro TTS / gemma.cpp)
+
+Kokoro TTS and `gemma.cpp` ship as **disabled-by-default, experimental engines** — unlike llama.cpp/MLX/LiteRT, they are not yet fully integrated into the model catalog scanner (Kokoro) or upstream-limited to older Gemma architectures (`gemma.cpp`; see [`ARCHITECTURE_PLAN.md`](docs/ARCHITECTURE_PLAN.md#future-roadmap-gemma-4-gemmacpp-tracking) for the tracked upstream status). Enabling one of these engines does not, by itself, add model-scanning support for it — it primarily controls whether the engine shows up in readiness/diagnostics checks and whether LocalMgr will attempt to launch it.
+
+To enable an experimental engine:
+1. Open **Preferences** (`Cmd+,`) → **Hardware & Engines** tab.
+2. Under **Execution Engines → Experimental / Off by Default**, toggle on Kokoro TTS and/or `gemma.cpp`.
+3. The sidebar's **Component Readiness** list and the Diagnostics view (`Cmd+Shift+L`) will immediately reflect the change.
+
+If an engine is disabled, LocalMgr refuses to start any model assigned to it (surfacing a clear "Engine Disabled" message) rather than attempting a launch that isn't expected to be fully supported yet.
 
 ---
 

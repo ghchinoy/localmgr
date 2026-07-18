@@ -30,8 +30,22 @@ class EngineReadinessService: ObservableObject {
     }
 
     private var hfCheck: DiagnosticCheck?
+    private weak var appSettings: AppSettings?
 
     init() {
+        refreshReadiness()
+    }
+
+    /// Injects `AppSettings` so `refreshReadiness()` can skip engines the
+    /// user has disabled (see `AppSettings.isEngineEnabled(_:)`). Mirrors
+    /// `BackendRunnerManager.configure(settings:)`. `init()`'s own
+    /// refreshReadiness() call runs before any settings are attached (and
+    /// so conservatively checks all 5 engines); calling `configure`
+    /// immediately re-runs `refreshReadiness()` so the disabled-engine
+    /// gating takes effect from the very first render rather than only
+    /// after a manual refresh.
+    func configure(settings: AppSettings) {
+        self.appSettings = settings
         refreshReadiness()
     }
 
@@ -48,6 +62,18 @@ class EngineReadinessService: ObservableObject {
 
     func refreshReadiness() {
         for engine in EngineType.allCases {
+            // Disabled engines (e.g. Kokoro/gemma.cpp by default, see
+            // AppSettings.isEngineEnabled) are omitted from `statuses`
+            // entirely -- not given a `.fail` check -- so they don't show
+            // up as permanently "Missing" in the sidebar Component
+            // Readiness list or DiagnosticsView's Health Checks section.
+            // `appSettings == nil` (before `configure(settings:)` has run)
+            // conservatively checks every engine, matching prior behavior.
+            if let appSettings, !appSettings.isEngineEnabled(engine) {
+                statuses.removeValue(forKey: engine)
+                continue
+            }
+
             var path: String?
             if engine == .liteRT {
                 path = findBinaryPath(name: "litert-lm") ?? findBinaryPath(name: "litert-benchmark")

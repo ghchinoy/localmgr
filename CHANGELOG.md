@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-18
+
+_Minor release (Build 11) adding a per-engine enable/disable toggle: Kokoro TTS and `gemma.cpp` now ship off by default as experimental engines, so machines without them installed no longer show permanent "Missing Engine" noise in the sidebar or Diagnostics view._
+
+### Added
+- **Per-Engine Enable/Disable Toggle:** new "Execution Engines" section in Settings → Hardware & Engines lets each engine (llama.cpp, MLX, LiteRT, Kokoro TTS, gemma.cpp) be independently turned on/off, persisted via `AppSettings.isEngineEnabled(_:)` (`@AppStorage` keyed by Swift enum case name, not the display string, so a future label change can't silently reset a saved preference). llama.cpp/MLX/LiteRT default **on**; Kokoro TTS and `gemma.cpp` default **off** as experimental engines — Kokoro has no model-scanning path yet in the catalog, and `gemma.cpp` is tracked pending upstream Gemma 4+ support (`localmgr-e3b`) (`[localmgr-lvb.1]`, `[localmgr-lvb.4]`).
+- **Readiness Checks Respect Enablement:** `EngineReadinessService` now omits disabled engines from its readiness checks entirely, instead of showing them as a permanently failing "Missing" check — this directly fixes gemma.cpp/Kokoro cluttering the sidebar's Component Readiness list and the Diagnostics Health Checks section with red status on machines that never installed them (`[localmgr-lvb.2]`, `[localmgr-lvb.3]`).
+- **Distinct "Engine Disabled" State:** model readiness badges (model list, inspector) now distinguish "🔴 Missing Engine" (binary genuinely not installed) from "⚪️ Engine Disabled" (turned off in Settings) — previously conflated into one boolean (`[localmgr-lvb.5]`).
+- **Enforced at Launch:** `BackendRunnerManager` now refuses to start a model whose engine is disabled, surfacing a structured `LocalMgrError` (`kind: "engine-disabled"`) rather than silently attempting (and failing) a launch (`[localmgr-lvb.6]`).
+
+### Fixed
+- **Sidebar Readiness List Bypassed Enablement Gating:** `SidebarView`'s Component Readiness list iterated all engine types directly rather than the gated readiness set, so a disabled engine could still incorrectly render as "Missing" — caught during live testing of this release and fixed before shipping (`[localmgr-lvb.4]`).
+
 ## [0.6.0] - 2026-07-18
 
 _Minor release (Build 10) adding proactive memory-pressure protection, structured diagnostics/error reporting, richer hardware detection, and model-compatibility signaling — a set of reliability/UX patterns adapted from a comparative review against MTPLX (github.com/youssofal/MTPLX)._
@@ -127,7 +140,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ghchinoy/localmgr/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ghchinoy/localmgr/compare/v0.4.2...v0.5.0

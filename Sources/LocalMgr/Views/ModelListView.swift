@@ -1,9 +1,47 @@
 import SwiftUI
 
+/// The 3 mutually-exclusive states a model's engine can be in, replacing a
+/// simple ready/not-ready boolean. `.disabled` is distinct from `.missing`:
+/// a disabled engine is a user choice (Settings -> Hardware & Engines) with
+/// a clear remedy (flip the toggle), whereas a missing engine means the
+/// binary genuinely isn't installed on this machine (a different remedy --
+/// install it).
+enum EngineReadinessBadgeState {
+    case ready
+    case missing
+    case disabled
+
+    var label: String {
+        switch self {
+        case .ready: return "🟢 Ready"
+        case .missing: return "🔴 Missing Engine"
+        case .disabled: return "⚪️ Engine Disabled"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .ready: return .green
+        case .missing: return .red
+        case .disabled: return .secondary
+        }
+    }
+}
+
+/// Computes the 3-state badge for a model's engine from the enabled setting
+/// and live readiness together, so both `ModelListView` and
+/// `ModelInspectorView` derive identical state from one shared function.
+@MainActor
+func engineReadinessBadgeState(for engine: EngineType, settings: AppSettings, readiness: EngineReadinessService) -> EngineReadinessBadgeState {
+    guard settings.isEngineEnabled(engine) else { return .disabled }
+    return readiness.isReady(for: engine) ? .ready : .missing
+}
+
 struct ModelListView: View {
     @EnvironmentObject var catalog: ModelCatalogService
     @EnvironmentObject var runner: BackendRunnerManager
     @EnvironmentObject var readiness: EngineReadinessService
+    @EnvironmentObject var settings: AppSettings
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +59,8 @@ struct ModelListView: View {
 
             List(selection: $catalog.selectedModel) {
             ForEach(catalog.filteredModels) { model in
-                let isReady = readiness.isReady(for: model.engineType)
+                let badgeState = engineReadinessBadgeState(for: model.engineType, settings: settings, readiness: readiness)
+                let isReady = badgeState == .ready
                 NavigationLink(value: model) {
                     HStack(spacing: 12) {
                         Image(systemName: model.engineType.iconName)
@@ -53,12 +92,12 @@ struct ModelListView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
 
-                                Text(isReady ? "🟢 Ready" : "🔴 Missing Engine")
+                                Text(badgeState.label)
                                     .font(.caption2.bold())
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(isReady ? Color.green.opacity(0.15) : Color.red.opacity(0.15))
-                                    .foregroundColor(isReady ? .green : .red)
+                                    .background(badgeState.color.opacity(0.15))
+                                    .foregroundColor(badgeState.color)
                                     .cornerRadius(4)
                             }
                         }

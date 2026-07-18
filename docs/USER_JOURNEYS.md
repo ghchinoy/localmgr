@@ -14,7 +14,7 @@ This record serves as the foundational reference for future product iterations, 
 ### User Persona & Primary Goal
 An Apple Silicon developer or AI power user who has downloaded model weights (`.gguf` files or MLX `.safetensors` folders) and wants to:
 1. Discover and inspect local model libraries without copying files.
-2. Immediately know whether their machine has the required execution binaries installed (`llama-server`, `mlx_lm.server`, Kokoro).
+2. Immediately know whether their machine has the required execution binaries installed for each *enabled* engine (`llama-server`, `mlx_lm.server`, `litert-lm` are enabled by default; Kokoro and `gemma.cpp` are off-by-default experimental engines toggleable in Settings → Hardware & Engines, and are omitted from readiness checks entirely while disabled).
 3. Understand the exact RAM/VRAM memory pressure a model will put on their system before clicking "Start".
 4. Seamlessly load and unload models while observing real-time system RAM pressure.
 

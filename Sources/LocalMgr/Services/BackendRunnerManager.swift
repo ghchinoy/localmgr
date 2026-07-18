@@ -146,6 +146,26 @@ class BackendRunnerManager: ObservableObject {
     }
 
     func startModel(_ model: ModelItem) {
+        // Refuse to launch a model whose engine has been disabled in
+        // Settings -> Hardware & Engines (Kokoro/gemma.cpp default off).
+        // Checked before stopCurrent() so a rejected request never tears
+        // down an already-running, still-enabled model. Today no scan path
+        // in ModelCatalogService can actually produce a ModelItem with
+        // engineType .kokoro/.gemmaCpp (see localmgr-lvb epic description),
+        // so this is defense-in-depth for whenever that changes, and for
+        // any future manual/programmatic model construction.
+        if let appSettings, !appSettings.isEngineEnabled(model.engineType) {
+            self.status = .error
+            let error = LocalMgrError(
+                message: "\(model.engineType.rawValue) is disabled in Settings.",
+                kind: "engine-disabled",
+                fix: "Enable it in Settings → Hardware & Engines, then try again."
+            )
+            self.logOutput.append("\nERROR: \(error.humanSummary)\n")
+            AppLog.error(error.logSummary, category: .runner)
+            return
+        }
+
         stopCurrent()
         recordActivity()
         self.activeModel = model

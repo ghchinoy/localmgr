@@ -64,17 +64,27 @@ By adopting key architectural patterns learned from open-source managers like Ja
 
 ## 3. Supported Model Backends
 
-| Engine / Backend | Target Formats | Primary Use Cases | Key Capabilities & Flags Managed |
-| :--- | :--- | :--- | :--- |
-| **`llama.cpp` (`llama-server`)** | `.gguf` | General LLMs (Llama 3, Gemma 2, Mistral, Cohere North Mini) | Metal GPU layer offload (`-ngl`), Flash Attention, context size (`-c`), batching |
-| **MLX (`mlx_lm` / Swift MLX)** | `.safetensors` (MLX format) | Apple Silicon native fine-tunes & optimized LLMs | Zero-copy Unified Memory sharing, Apple Silicon optimized execution |
-| **Kokoro RS / ONNX** | `.onnx` / Rust binary | High-fidelity, ultra-fast 82M Text-to-Speech (TTS) | Sample rate selection, voice pack management (`.bin` / `.pt`), instant streaming audio playback |
-| **`gemma.cpp`** | `.sbs` / `.gguf` | Minimalist Google Gemma deployment | High-speed C++ CPU/SIMD execution (Supports Gemma 1 & 2; see Roadmap below) |
+| Engine / Backend | Target Formats | Primary Use Cases | Key Capabilities & Flags Managed | Enabled by Default? |
+| :--- | :--- | :--- | :--- | :--- |
+| **`llama.cpp` (`llama-server`)** | `.gguf` | General LLMs (Llama 3, Gemma 2, Mistral, Cohere North Mini) | Metal GPU layer offload (`-ngl`), Flash Attention, context size (`-c`), batching | ✅ Yes |
+| **MLX (`mlx_lm` / Swift MLX)** | `.safetensors` (MLX format) | Apple Silicon native fine-tunes & optimized LLMs | Zero-copy Unified Memory sharing, Apple Silicon optimized execution | ✅ Yes |
+| **LiteRT (`litert-lm`)** | `.tflite` / `.task` | Google AI Edge LiteRT models | Metal backend execution | ✅ Yes |
+| **Kokoro RS / ONNX** | `.onnx` / Rust binary | High-fidelity, ultra-fast 82M Text-to-Speech (TTS) | Sample rate selection, voice pack management (`.bin` / `.pt`), instant streaming audio playback | 🧪 No — experimental (see below) |
+| **`gemma.cpp`** | `.sbs` / `.gguf` | Minimalist Google Gemma deployment | High-speed C++ CPU/SIMD execution (Supports Gemma 1 & 2; see Roadmap below) | 🧪 No — experimental (see below) |
+
+### Experimental Engines: Kokoro TTS & `gemma.cpp` (Off by Default)
+
+Both engines are fully wired into `BackendRunnerManager`'s launch-argument construction, but ship **disabled by default** via a per-engine `AppSettings.isEngineEnabled(_:)` toggle (Settings → Hardware & Engines → Execution Engines), for two independent reasons:
+
+* **Kokoro TTS**: `ModelCatalogService`'s catalog scanner does not yet have a scan branch that classifies any file as a Kokoro model — enabling the toggle does not, by itself, make Kokoro models discoverable. Until catalog scanning is implemented, leaving it enabled by default only produced a permanently-red "Missing Engine" entry in the sidebar's Component Readiness list and Diagnostics Health Checks for users who never installed `kokoro-server` (see `localmgr-lvb`).
+* **`gemma.cpp`**: see the Future Roadmap subsection immediately below — upstream does not yet support Gemma 4+, so LocalMgr defaults to `llama-server`/`mlx_lm.server` for current Gemma weights.
+
+When an experimental engine is disabled: it is entirely absent from `EngineReadinessService.statuses`/`allChecks` (not shown as a failing check), and `BackendRunnerManager.startModel(_:)` refuses to launch any model assigned to it, surfacing a distinct "Engine Disabled" state (as opposed to "Missing Engine," which means the binary genuinely isn't installed).
 
 ### Future Roadmap: Gemma 4+ & `gemma.cpp` Tracking
 * **Current Status**: As of 2025/2026, `google/gemma.cpp` natively supports **Gemma 1**, **Gemma 2**, **RecurrentGemma**, and **PaliGemma**, but has not yet updated its SIMD kernels and weight loaders to officially support latest **Gemma 4+** model architectures.
 * **Primary Strategy for Gemma 4+**: For immediate execution of latest Gemma 4+ weights on Apple Silicon, LocalMgr prioritizes **`llama-server`** (Metal GPU offloading via `-ngl 99`) and **`mlx_lm.server`** (native Apple Silicon `.safetensors`), both of which actively release zero-day updates for new Gemma architectures.
-* **Roadmap Watch Item**: We are actively tracking the `google/gemma.cpp` repository. Once the `gemma.cpp` team ships upstream support for Gemma 4+, we will re-evaluate incorporating it as a specialized lightweight CPU/SIMD reference runner alongside our primary GPU engines.
+* **Roadmap Watch Item**: We are actively tracking the `google/gemma.cpp` repository (`localmgr-e3b`). Once the `gemma.cpp` team ships upstream support for Gemma 4+, we will re-evaluate incorporating it as a specialized lightweight CPU/SIMD reference runner alongside our primary GPU engines, and re-evaluate defaulting it to enabled.
 
 ---
 

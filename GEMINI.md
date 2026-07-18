@@ -1,7 +1,7 @@
 # GEMINI.md
 
 ## Project Overview
-**LocalMgr** is a standalone macOS application built with Swift 6 and SwiftUI, designed to manage and orchestrate local AI models (GGUF, MLX Safetensors, Google LiteRT `.tflite`, Kokoro RS) and execution engines (`llama-server`, `mlx_lm.server`, `litert-lm`).
+**LocalMgr** is a standalone macOS application built with Swift 6 and SwiftUI, designed to manage and orchestrate local AI models (GGUF, MLX Safetensors, Google LiteRT `.tflite`) and execution engines (`llama-server`, `mlx_lm.server`, `litert-lm`). Kokoro RS (TTS) and `gemma.cpp` are also supported as **off-by-default, experimental engines** (see below).
 
 ## Architecture & Tech Stack
 - **Language**: Swift 6 (Strict Concurrency)
@@ -9,10 +9,15 @@
 - **Build & Packaging**: Swift Package Manager (`Package.swift`) + `Makefile` for macOS `.app` bundling (`LocalMgr.app`)
 
 ### Supported Engines & Binaries
-- **`llama-server`**: GGUF LLMs, dynamic port allocation, `-ngl 99` Metal offload, Flash Attention.
-- **`mlx_lm.server`**: MLX Safetensors, native Apple Silicon zero-copy unified memory sharing.
-- **`litert-lm` / `litert-benchmark`**: Google AI Edge LiteRT (`.tflite` / `.task`) Metal backend execution.
-- **`kokoro-server`**: High-speed local ONNX / Rust Text-to-Speech (TTS).
+- **`llama-server`** *(enabled by default)*: GGUF LLMs, dynamic port allocation, `-ngl 99` Metal offload, Flash Attention.
+- **`mlx_lm.server`** *(enabled by default)*: MLX Safetensors, native Apple Silicon zero-copy unified memory sharing.
+- **`litert-lm` / `litert-benchmark`** *(enabled by default)*: Google AI Edge LiteRT (`.tflite` / `.task`) Metal backend execution.
+- **`kokoro-server`** *(off by default, experimental)*: High-speed local ONNX / Rust Text-to-Speech (TTS). No model-scanning path exists yet in `ModelCatalogService`; enabling it in Settings only affects readiness/diagnostics and launch-eligibility, not catalog discovery.
+- **`gemma.cpp`** *(off by default, experimental)*: Minimalist Gemma CPU/SIMD deployment. Upstream `google/gemma.cpp` does not yet support Gemma 4+ architectures — tracked via `localmgr-e3b`. LocalMgr prioritizes `llama-server`/`mlx_lm.server` for current Gemma models.
+- **Per-Engine Enable/Disable (`AppSettings.isEngineEnabled(_:)`)**:
+  - Each `EngineType` has an independent `@AppStorage` toggle keyed by its **Swift case name** (e.g. `engineEnabled.gemmaCpp`), not its display-string `rawValue` — this is deliberate so a future UI label change never silently resets a user's saved preference.
+  - `EngineReadinessService.refreshReadiness()` skips disabled engines entirely (they're absent from `statuses`/`allChecks`, not shown as a failing check) — never assume `EngineType.allCases` reflects "engines currently shown to the user"; always filter through `EngineReadinessService.statuses` or `AppSettings.isEngineEnabled(_:)` first.
+  - `BackendRunnerManager.startModel(_:)` refuses to launch a model whose engine is disabled (checked before `stopCurrent()`, so a rejected request never tears down an already-running model).
 - **Resolution Policy & Astral `uv` Preference**:
   - The user prefers **Astral `uv`** (`uv tool install <pkg>`) over global `pip`.
   - Binaries are probed across `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/*/bin/`, with automatic fallback to `~/Library/Application Support/LocalMgr/Engines/`.

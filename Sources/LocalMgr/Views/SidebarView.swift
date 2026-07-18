@@ -189,7 +189,13 @@ struct SidebarView: View {
             }
 
             Section(header: Text("Component Readiness")) {
-                ForEach(EngineType.allCases) { engine in
+                // Only enabled engines are shown here -- readiness.statuses
+                // omits disabled engines entirely (see
+                // EngineReadinessService.refreshReadiness()), so iterating
+                // EngineType.allCases directly would incorrectly re-surface
+                // a disabled engine as "Missing" (its safe-default fallback
+                // status) rather than hiding it as intended.
+                ForEach(EngineType.allCases.filter { readiness.statuses[$0] != nil }) { engine in
                     let st = readiness.status(for: engine)
                     HStack {
                         Circle()
