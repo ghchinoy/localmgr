@@ -10,6 +10,37 @@ To gain a progressive, comprehensive understanding of **LocalMgr**, agents shoul
 
 ---
 
+## Verification & Testing Protocol
+
+**LocalMgr currently has no automated test target** (see `localmgr-jhj.1`, tracked to add one). Until that lands, `swift build` succeeding is necessary but **not sufficient** evidence that a change works — it only proves the code is syntactically/type valid, not that its runtime behavior is correct. A `bd close` reason of "implemented and compiles" is not acceptable verification; close reasons should cite what was actually exercised and observed. Use whichever of the following techniques fit the change:
+
+1. **Standalone SwiftPM verification harness (pure logic).** For any new pure type/algorithm (e.g. `MemoryPressureGuard`, `HardwareAutoTuner` classification, `CompatibilityTier` rules), scaffold a throwaway `swift-tools-version: 6.0` package under `/tmp/`, copy in only the files under test (plus a minimal `AppLog`/`LogCategory` stub if needed — most `Services/`/`Models/` files depend on it), and write real assertions (synthetic input sequences, fake clocks/injected dependencies, edge cases) rather than eyeballing the code. Run with `swift run`. **This has already caught a real bug** (an explicit `init() {}` that silently suppressed Swift's memberwise-initializer synthesis, making a type's documented "injectable for tests" claim false) that a full read-through missed. Delete the harness when done — do not commit it or leave it in the repo.
+2. **Live end-to-end testing against real engines.** This dev machine has `llama-server`, `mlx_lm.server`, and real GGUF/MLX models available locally (see `EngineReadinessService`'s search paths). For any change touching `BackendRunnerManager`, `LocalAPIGateway`, `EngineReadinessService`, or `HardwareAutoTuner`, actually run `make app`, `open LocalMgr.app`, and exercise it with `curl` against `http://127.0.0.1:4891` (gateway) and/or by starting a real model — don't just trace the code path by reading it. Real memory/thermal conditions on this machine have already surfaced genuine behavior (e.g. `MemoryPressureGuard` soft-evicting an idle runner under actual WARNING pressure) that a mocked test would not exercise.
+3. **UI verification via AppleScript/System Events.** For SwiftUI view changes, don't just confirm the build compiles — actually launch the app and drive it:
+   ```bash
+   osascript -e 'tell application "LocalMgr" to activate'
+   osascript -e 'tell application "System Events" to keystroke "," using command down'  # open Settings
+   osascript << 'EOF'
+   tell application "System Events"
+       tell process "LocalMgr"
+           set win to window "Hardware & Engines"
+           set allEls to entire contents of win
+           repeat with el in allEls
+               try
+                   if class of el is checkbox then log (value of el)
+               end try
+           end repeat
+       end tell
+   end tell
+   EOF
+   ```
+   Reading live `static text`/`checkbox` element values this way is what caught a real bug this session: a sidebar list that appeared correct on read-through was actually bypassing new gating logic and still rendering disabled state incorrectly. Click buttons/toggles (`click button "..."`, `click checkbox`) and re-read values to confirm state actually changes, rather than assuming a binding is wired correctly.
+4. **Confirm log/error output matches user-facing output.** When a change touches `AppLog`/`LocalMgrError`/`DiagnosticCheck`, verify with `log show --predicate 'subsystem == "com.localmgr.mac"' --last '10m'` (note: use `/usr/bin/log`, not a shadowed `log` alias/function, and pass duration as a single quoted argument, e.g. `'10m'`) that what's logged internally actually matches what a `curl` response or UI banner shows — these are supposed to be the same object (`LocalMgrError`), and this is the cheapest way to prove it.
+5. **Clean up after testing.** Kill any spawned processes (`pkill -f "LocalMgr.app/Contents/MacOS/LocalMgr"`, `pkill -f llama-server`) and delete throwaway `/tmp` harnesses before finishing a task. Verify with `ps aux | grep -i localmgr` that nothing was left running.
+6. **Version/CHANGELOG discipline.** Any user-facing change ships with a version bump (patch for fixes, minor for new functionality — ask if ambiguous) in `Info.plist` (`CFBundleShortVersionString` + `CFBundleVersion`) and a corresponding `CHANGELOG.md` entry with `bd` issue-ID references, following the existing per-version format. Rebuild (`make app`) and re-check the bundled `Info.plist` after bumping, don't just trust the source edit.
+
+---
+
 ## Issue Tracking
 
 This project uses **bd (beads)** for issue tracking.
