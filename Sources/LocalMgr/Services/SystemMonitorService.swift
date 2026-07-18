@@ -27,6 +27,14 @@ class SystemMonitorService: ObservableObject {
     private var pressureSource: DispatchSourceMemoryPressure?
     private weak var runnerManager: BackendRunnerManager?
 
+    /// Edge-triggered hysteresis decision core over
+    /// `kern.memorystatus_vm_pressure_level` (see `MemoryPressureGuard.swift`).
+    /// Evaluated both on `DispatchSource` pressure-change notifications
+    /// (for prompt reaction) and on the existing 2s telemetry timer (so a
+    /// continuously-elevated level still gets re-evaluated once its
+    /// re-arm cooldown elapses, even without a fresh kernel notification).
+    private var pressureGuard = MemoryPressureGuard()
+
     var shortMemorySummary: String {
         let usedGB = Double(usedRAMBytes) / 1_073_741_824.0
         let totalGB = Double(totalRAMBytes) / 1_073_741_824.0
@@ -40,6 +48,7 @@ class SystemMonitorService: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.updateTelemetry()
+                self?.evaluateMemoryPressure()
             }
         }
     }
@@ -49,17 +58,41 @@ class SystemMonitorService: ObservableObject {
     }
 
     private func setupPressureListener() {
-        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.critical], queue: .main)
+        // Listen for both .warning and .critical kernel notifications so we
+        // react promptly on either transition; the actual decision (act now
+        // vs. defer vs. re-arm cooldown) is delegated to `pressureGuard`,
+        // not decided here. The 2s telemetry timer above additionally
+        // re-evaluates the guard on a fixed cadence so a level that stays
+        // continuously elevated is still re-checked once its cooldown
+        // elapses, even if the kernel doesn't emit another edge notification.
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
         source.setEventHandler { [weak self] in
             Task { @MainActor [weak self] in
-                if self?.runnerManager?.status == .running {
-                    self?.runnerManager?.logOutput.append("\n[EMERGENCY PRESSURE RELEASE]: macOS reported CRITICAL memory pressure (thrashing). Stopping active runner instantly to protect system responsiveness.\n")
-                    self?.runnerManager?.stopCurrent()
-                }
+                self?.evaluateMemoryPressure()
             }
         }
         source.resume()
         self.pressureSource = source
+    }
+
+    /// Polls the current kernel memory-pressure level through
+    /// `pressureGuard` and, if it recommends action, asks
+    /// `BackendRunnerManager` to soft- or hard-evict the current runner.
+    /// `MemoryPressureGuard` itself never touches the runner -- this is the
+    /// only place that translates its recommendation into an actual
+    /// eviction call, per LocalMgr's zero-dependency architecture (no ML/
+    /// external process introspection required, pure Darwin sysctl polling).
+    private func evaluateMemoryPressure() {
+        guard let runner = runnerManager else { return }
+        let action = pressureGuard.evaluate(requestInFlight: runner.recentlyActive)
+        switch action {
+        case .none:
+            break
+        case .softEvict:
+            runner.stopIfIdle(reason: "macOS reported WARNING memory pressure. Stopping the idle runner to release RAM before pressure escalates to critical.")
+        case .hardEvict:
+            runner.stopForCriticalPressure(reason: "macOS reported CRITICAL memory pressure (thrashing). Stopping the runner instantly to protect system responsiveness.")
+        }
     }
 
     func updateTelemetry() {

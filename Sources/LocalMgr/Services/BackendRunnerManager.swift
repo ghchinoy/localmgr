@@ -29,6 +29,23 @@ class BackendRunnerManager: ObservableObject {
     private var lastActivityDate: Date = Date()
     private var idleTimer: Timer?
 
+    /// Window within which a recorded activity timestamp is treated as "a
+    /// request is plausibly still in flight" for the purposes of
+    /// `MemoryPressureGuard`'s warning-level defer window. This is a
+    /// heuristic (LocalMgr does not currently track precise request
+    /// start/end boundaries per in-flight HTTP call) rather than an exact
+    /// in-flight flag -- good enough to avoid stopping a runner in the
+    /// middle of a burst of activity without adding request-level tracking.
+    private static let recentActivityWindow: TimeInterval = 3.0
+
+    /// Whether activity (a gateway request, a Quick Test Ping, etc.) was
+    /// recorded recently enough that a runner should be treated as
+    /// plausibly mid-request for `MemoryPressureGuard` warning-level defer
+    /// purposes. See `recentActivityWindow`.
+    var recentlyActive: Bool {
+        Date().timeIntervalSince(lastActivityDate) < Self.recentActivityWindow
+    }
+
     init() {
         idleTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -250,6 +267,38 @@ class BackendRunnerManager: ObservableObject {
         activeModel = nil
         status = .stopped
         sessionStartTime = nil
+    }
+
+    /// Stops the current runner in response to a `.softEvict`
+    /// `MemoryPressureAction`, but only if it is not `recentlyActive` --
+    /// i.e. never interrupts a runner that plausibly has a request in
+    /// flight. Returns `true` if a runner was actually stopped.
+    ///
+    /// LocalMgr only ever supervises a single runner process at a time
+    /// (`startModel` always calls `stopCurrent()` first), so "the least-
+    /// recently-used idle runner" reduces to "the current runner, if idle".
+    @discardableResult
+    func stopIfIdle(reason: String) -> Bool {
+        guard status == .running, !recentlyActive else { return false }
+        logOutput.append("\n[Memory Pressure]: \(reason)\n")
+        AppLog.info("MemoryPressureGuard soft-evicted idle runner '\(activeModel?.name ?? "unknown model")': \(reason)", category: .runner)
+        stopCurrent()
+        return true
+    }
+
+    /// Force-stops the current runner in response to a `.hardEvict`
+    /// `MemoryPressureAction` (kernel-reported CRITICAL pressure).
+    /// Unlike `stopIfIdle`, this acts unconditionally -- CRITICAL pressure
+    /// means the system is at real risk of thrashing/freezing, which
+    /// outweighs preserving one in-flight generation. This preserves the
+    /// pre-existing "Emergency Pressure Release" behavior, now routed
+    /// through `MemoryPressureGuard`'s edge-triggered/re-arm policy instead
+    /// of firing unconditionally on every critical `DispatchSource` event.
+    func stopForCriticalPressure(reason: String) {
+        guard status == .running else { return }
+        logOutput.append("\n[EMERGENCY PRESSURE RELEASE]: \(reason)\n")
+        AppLog.fault("MemoryPressureGuard hard-evicted runner '\(activeModel?.name ?? "unknown model")' under critical pressure: \(reason)", category: .runner)
+        stopCurrent()
     }
 
     func clearLogs() {

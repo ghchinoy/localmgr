@@ -112,7 +112,7 @@ struct MainSplitView: View {
         )) {
             Button("OK", role: .cancel) { downloader.lastError = nil }
         } message: {
-            Text(downloader.lastError ?? "")
+            Text(downloader.lastError?.humanSummary ?? "")
         }
     }
 }

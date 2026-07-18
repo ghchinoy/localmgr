@@ -78,6 +78,17 @@ struct ModelItem: Identifiable, Hashable {
     var headCountKV: Int?
     var chatTemplate: String?
 
+    /// Graduated compatibility signal (see `CompatibilityTier`), distinct
+    /// from `EngineType`/`ModelFormat` (which say what LocalMgr *thinks*
+    /// this file is) -- this says how confident LocalMgr is that the
+    /// assigned engine will actually run it correctly. Defaults to
+    /// `.verified` for model kinds that don't yet have a classifier wired
+    /// up (LiteRT, ONNX/Kokoro) rather than under-classifying them as
+    /// unverified with no justification.
+    var compatibilityTier: CompatibilityTier = .verified
+    var compatibilityMessage: String = "No specific compatibility concerns detected."
+    var compatibilityRecommendedAction: String?
+
     var sizeFormatted: String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useGB, .useMB]

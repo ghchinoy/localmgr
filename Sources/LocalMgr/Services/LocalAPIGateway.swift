@@ -9,6 +9,14 @@ class LocalAPIGateway: ObservableObject {
     @Published var requestCount: Int = 0
     @Published var lastLog: String = "Gateway stopped"
 
+    /// Most recent gateway-side failure (bind failure, 409 model conflict,
+    /// upstream unreachable/timeout, malformed request), typed as
+    /// `LocalMgrError` so the exact same structured error is both what gets
+    /// logged via `AppLog` and what's serialized into the HTTP error
+    /// response body -- a developer's curl/IDE output and the in-app
+    /// Diagnostics view can never disagree about what happened.
+    @Published var lastError: LocalMgrError?
+
     private var listener: NWListener?
     private weak var catalog: ModelCatalogService?
     private weak var runner: BackendRunnerManager?
@@ -59,7 +67,12 @@ class LocalAPIGateway: ObservableObject {
                     case .failed(let error):
                         self?.isRunning = false
                         self?.lastLog = "Gateway error: \(error.localizedDescription)"
-                        AppLog.error("Gateway listener failed: \(error.localizedDescription)", category: .gateway)
+                        self?.recordGatewayError(LocalMgrError(
+                            message: "The gateway listener failed while running.",
+                            kind: "gateway-listener-failed",
+                            detail: error.localizedDescription,
+                            fix: "The gateway will need to be restarted (toggle it or restart LocalMgr)."
+                        ))
                     case .cancelled:
                         self?.isRunning = false
                         self?.lastLog = "Gateway stopped"
@@ -79,8 +92,24 @@ class LocalAPIGateway: ObservableObject {
         } catch {
             self.isRunning = false
             self.lastLog = "Failed to bind port \(port): \(error.localizedDescription)"
-            AppLog.error("Failed to bind gateway to port \(port): \(error.localizedDescription)", category: .gateway)
+            recordGatewayError(LocalMgrError(
+                message: "Failed to bind the gateway to port \(port).",
+                kind: "gateway-bind-failed",
+                detail: error.localizedDescription,
+                fix: "Check whether another process is already using port \(port), or choose a different gateway port in Settings."
+            ))
         }
+    }
+
+    /// Records a gateway-side failure as a `LocalMgrError`, both for
+    /// `lastError` (UI banner) and `AppLog` (unified logging + Diagnostics
+    /// view), so the two surfaces can never disagree about what happened.
+    /// Callers from `nonisolated` connection-handling contexts should
+    /// `await` this via `Task { @MainActor in ... }` or by calling it from
+    /// an already-`await`ed MainActor hop (see `sendErrorResponse`).
+    private func recordGatewayError(_ error: LocalMgrError) {
+        self.lastError = error
+        AppLog.error(error.logSummary, category: .gateway)
     }
 
     func stopListening() {
@@ -114,19 +143,29 @@ class LocalAPIGateway: ObservableObject {
 
     nonisolated private func processHTTPRequest(data: Data, connection: NWConnection) async {
         guard let requestString = String(data: data, encoding: .utf8) else {
-            sendHTTPResponse(connection: connection, status: 400, body: "{\"error\":\"Invalid request\"}")
+            await sendErrorResponse(connection: connection, status: 400, error: LocalMgrError(
+                message: "Malformed request: body was not valid UTF-8.",
+                kind: "gateway-malformed-request"
+            ))
             return
         }
 
         let lines = requestString.components(separatedBy: "\r\n")
         guard let firstLine = lines.first else {
-            sendHTTPResponse(connection: connection, status: 400, body: "{\"error\":\"Empty request\"}")
+            await sendErrorResponse(connection: connection, status: 400, error: LocalMgrError(
+                message: "Malformed request: empty request.",
+                kind: "gateway-malformed-request"
+            ))
             return
         }
 
         let parts = firstLine.components(separatedBy: " ")
         guard parts.count >= 2 else {
-            sendHTTPResponse(connection: connection, status: 400, body: "{\"error\":\"Malformed HTTP line\"}")
+            await sendErrorResponse(connection: connection, status: 400, error: LocalMgrError(
+                message: "Malformed request: could not parse the HTTP request line.",
+                kind: "gateway-malformed-request",
+                detail: firstLine
+            ))
             return
         }
 
@@ -237,7 +276,10 @@ class LocalAPIGateway: ObservableObject {
 
     private func handleChatCompletions(rawRequest: Data, requestString: String, connection: NWConnection) async {
         guard let runner = runner, let catalog = catalog else {
-            sendHTTPResponse(connection: connection, status: 500, body: "{\"error\":\"Gateway not initialized\"}")
+            sendErrorResponse(connection: connection, status: 500, error: LocalMgrError(
+                message: "Gateway is not fully initialized yet.",
+                kind: "gateway-not-initialized"
+            ))
             return
         }
 
@@ -255,8 +297,12 @@ class LocalAPIGateway: ObservableObject {
         if let reqName = requestedModelName, runner.activeModel?.name != reqName {
             if let matched = catalog.models.first(where: { $0.name.localizedCaseInsensitiveContains(reqName) || reqName.localizedCaseInsensitiveContains($0.name) }) {
                 if runner.status == .running {
-                    AppLog.error("Gateway request for '\(matched.name)' conflicted with active runner '\(runner.activeModel?.name ?? "unknown")' (409)", category: .gateway)
-                    sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: LocalMgr is currently running '\(runner.activeModel?.name ?? "another model")'. Stop current runner before starting '\(matched.name)'.\"}")
+                    let activeName = runner.activeModel?.name ?? "another model"
+                    sendErrorResponse(connection: connection, status: 409, error: LocalMgrError(
+                        message: "Conflict: LocalMgr is currently running '\(activeName)'.",
+                        kind: "gateway-model-conflict",
+                        fix: "Stop the current runner before starting '\(matched.name)', or point this request at '\(activeName)' instead."
+                    ))
                     return
                 }
                 updateLastLog("On-demand wake: starting \(matched.name)...")
@@ -269,16 +315,24 @@ class LocalAPIGateway: ObservableObject {
             } else if runner.status == .running {
                 // If model name not found in catalog, but runner is running, fail fast if names conflict unless "default" or "local"
                 if reqName.lowercased() != "default" && reqName.lowercased() != "local" {
-                    AppLog.error("Gateway request for unknown model '\(reqName)' conflicted with active runner '\(runner.activeModel?.name ?? "unknown")' (409)", category: .gateway)
-                    sendHTTPResponse(connection: connection, status: 409, body: "{\"error\":\"Conflict: Requested model '\(reqName)' not found in vault, and runner is active with '\(runner.activeModel?.name ?? "another model")'.\"}")
+                    let activeName = runner.activeModel?.name ?? "another model"
+                    sendErrorResponse(connection: connection, status: 409, error: LocalMgrError(
+                        message: "Conflict: requested model '\(reqName)' was not found in the vault, and the runner is active with '\(activeName)'.",
+                        kind: "gateway-model-conflict",
+                        fix: "Attach a folder containing '\(reqName)', or request \"default\"/\"local\" to use the currently running model."
+                    ))
                     return
                 }
             }
         }
 
         guard runner.status == .running || runner.activeModel != nil else {
-            AppLog.info("Gateway received a completion request with no runner active (503)", category: .gateway)
-            sendHTTPResponse(connection: connection, status: 503, body: "{\"error\":\"No local model runner active or ready on port \(runner.port)\"}")
+            sendErrorResponse(connection: connection, status: 503, error: LocalMgrError(
+                message: "No local model runner is active or ready.",
+                kind: "gateway-no-runner",
+                detail: "Gateway port: \(runner.port)",
+                fix: "Start a model runner from LocalMgr, or specify a \"model\" in the request so the gateway can wake one on demand."
+            ))
             return
         }
 
@@ -334,12 +388,44 @@ class LocalAPIGateway: ObservableObject {
             if let respString = String(data: respData, encoding: .utf8) {
                 sendHTTPResponse(connection: connection, status: statusCode, body: respString)
             } else {
-                sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Invalid response encoding from backend\"}")
+                sendErrorResponse(connection: connection, status: 502, error: LocalMgrError(
+                    message: "Received an invalid (non-UTF8) response from the local engine.",
+                    kind: "gateway-invalid-upstream-encoding"
+                ))
             }
         } catch {
-            AppLog.error("Proxy request to local engine failed: \(error.localizedDescription)", category: .gateway)
-            sendHTTPResponse(connection: connection, status: 502, body: "{\"error\":\"Proxy error: \(error.localizedDescription)\"}")
+            let isTimeout = (error as NSError).code == NSURLErrorTimedOut
+            sendErrorResponse(connection: connection, status: 502, error: LocalMgrError(
+                message: isTimeout
+                    ? "The request to the local engine timed out."
+                    : "Couldn't reach the local engine.",
+                kind: isTimeout ? "gateway-upstream-timeout" : "gateway-upstream-unreachable",
+                detail: error.localizedDescription,
+                fix: "Confirm the runner is still running (check Live Logs) and that its port matches the gateway's configured runner port."
+            ))
         }
+    }
+
+    /// Sends an HTTP error response whose JSON body is derived from a
+    /// `LocalMgrError`, and simultaneously records that same instance via
+    /// `recordGatewayError` -- guaranteeing the developer-facing curl/IDE
+    /// response body and the app's AppLog/Diagnostics/lastError banner are
+    /// always built from one shared source of truth, never two independently
+    /// worded messages.
+    private func sendErrorResponse(connection: NWConnection, status: Int, error: LocalMgrError) {
+        recordGatewayError(error)
+        var errorDict: [String: Any] = ["message": error.message, "kind": error.kind]
+        if let fix = error.fix { errorDict["fix"] = fix }
+        if let detail = error.detail { errorDict["detail"] = detail }
+
+        let jsonString: String
+        if let data = try? JSONSerialization.data(withJSONObject: ["error": errorDict]),
+           let str = String(data: data, encoding: .utf8) {
+            jsonString = str
+        } else {
+            jsonString = "{\"error\":{\"message\":\"\(error.message)\"}}"
+        }
+        sendHTTPResponse(connection: connection, status: status, body: jsonString)
     }
 
     nonisolated private func sendHTTPResponse(connection: NWConnection, status: Int, body: String) {

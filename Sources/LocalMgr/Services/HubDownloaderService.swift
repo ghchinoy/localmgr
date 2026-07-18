@@ -34,8 +34,11 @@ class HubDownloaderService: ObservableObject {
 
     /// Persists independently of `isDownloading` so failures remain visible
     /// after the in-progress banner is torn down, instead of flashing and
-    /// disappearing in the same render pass.
-    @Published var lastError: String?
+    /// disappearing in the same render pass. Typed as `LocalMgrError` (not
+    /// a bare `String`) so `kind` distinguishes e.g. an invalid/expired
+    /// token from an unaccepted gated-repo license without the UI having to
+    /// parse message text.
+    @Published var lastError: LocalMgrError?
 
     // NOTE (localmgr-3iz): repoID/filename pairs below are verified against
     // the live Hugging Face Hub API (HTTP 200 on the resolve URL) as of
@@ -87,7 +90,11 @@ class HubDownloaderService: ObservableObject {
 
         let urlString = "https://huggingface.co/\(repoID)/resolve/main/\(file.path)"
         guard let url = URL(string: urlString) else {
-            fail("Invalid URL for \(repoID)/\(file.path).")
+            fail(LocalMgrError(
+                message: "Couldn't build a download URL for \(repoID)/\(file.path).",
+                kind: "invalid-url",
+                detail: urlString
+            ))
             return
         }
 
@@ -107,10 +114,20 @@ class HubDownloaderService: ObservableObject {
 
             guard result.statusCode == 200, let tempURL = result.value else {
                 if let description = result.transportErrorDescription {
-                    self.fail("Error downloading \(file.filename): \(description)")
+                    self.fail(LocalMgrError(
+                        message: "Error downloading \(file.filename): \(description)",
+                        kind: "network-transport",
+                        detail: description
+                    ))
                 } else {
                     let statusCode = result.statusCode ?? -1
-                    self.fail("Download failed: \(HFAuth.describeError(statusCode: statusCode, repoID: repoID, tokenWasSent: result.tokenWasSent))")
+                    let description = HFAuth.describeError(statusCode: statusCode, repoID: repoID, tokenWasSent: result.tokenWasSent)
+                    self.fail(LocalMgrError(
+                        message: "Download failed for \(file.filename).",
+                        kind: Self.errorKind(forStatusCode: statusCode),
+                        detail: "HTTP \(statusCode)",
+                        fix: description
+                    ))
                 }
                 return
             }
@@ -135,20 +152,38 @@ class HubDownloaderService: ObservableObject {
                 catalog.refreshCatalog()
                 AppLog.info("Installed \(file.filename) from \(repoID) into \(targetFolder.lastPathComponent)", category: .downloads)
             } catch {
-                self.fail("Error installing \(file.filename): \(error.localizedDescription)")
+                self.fail(LocalMgrError(
+                    message: "Error installing \(file.filename).",
+                    kind: "file-io",
+                    detail: error.localizedDescription
+                ))
             }
+        }
+    }
+
+    /// Maps an HTTP status code from a failed Hugging Face request to a
+    /// stable `LocalMgrError.kind`, so the UI/log can distinguish e.g. an
+    /// invalid/expired token from an unaccepted gated-repo license without
+    /// parsing message text (see `HFAuth.describeError`, which already
+    /// distinguishes 401 vs. 403 in its human-readable copy).
+    private static func errorKind(forStatusCode statusCode: Int) -> String {
+        switch statusCode {
+        case 401: return "auth-invalid-token"
+        case 403: return "auth-license-not-accepted"
+        case 404: return "not-found"
+        default: return "http-error"
         }
     }
 
     /// Records a download failure. `lastError` persists after `isDownloading`
     /// flips back to false so the UI can surface it (e.g. via an alert)
     /// instead of the in-progress banner disappearing with no explanation.
-    private func fail(_ message: String) {
-        statusMessage = message
-        lastError = message
+    private func fail(_ error: LocalMgrError) {
+        statusMessage = error.message
+        lastError = error
         isDownloading = false
         activeDownloads.removeAll()
-        AppLog.error(message, category: .downloads)
+        AppLog.error(error.logSummary, category: .downloads)
     }
 
     func downloadModel(_ model: CuratedModel, targetFolder: URL, catalog: ModelCatalogService) {

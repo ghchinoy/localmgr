@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-18
+
+_Minor release (Build 10) adding proactive memory-pressure protection, structured diagnostics/error reporting, richer hardware detection, and model-compatibility signaling — a set of reliability/UX patterns adapted from a comparative review against MTPLX (github.com/youssofal/MTPLX)._
+
+### Added
+- **Memory-Pressure Guard:** new `MemoryPressureGuard` polls `kern.memorystatus_vm_pressure_level` directly and applies edge-triggered hysteresis (act only on the rising edge into WARNING/CRITICAL, ~120s re-arm cooldown, defer WARNING-level action up to 60s if a runner is actively serving a request) instead of the previous unconditional CRITICAL-only reaction. Wired into `SystemMonitorService`, which now asks `BackendRunnerManager` to soft-evict an idle runner on WARNING or hard-evict unconditionally on CRITICAL (`[localmgr-2l5.1]`, `[localmgr-2l5.2]`). Verified live in production during testing: a real WARNING-pressure event correctly soft-evicted an idle `llama-server` runner without touching an active generation.
+- **Structured Diagnostic Checks:** new `DiagnosticCheck` type (status/observed/expected/fix/command) is now the uniform result shape for engine-readiness checks. `EngineReadinessService` emits a `[DiagnosticCheck]` per engine instead of ad hoc booleans, and `DiagnosticsView` (`Cmd+Shift+L`) gained a "Health Checks" section with an overall pass/warn/fail rollup, plus a "Copy Diagnostics Bundle" export combining health checks and recent log entries in one pasteable block for bug reports (`[localmgr-2l5.3]`, `[localmgr-2l5.4]`, `[localmgr-2l5.5]`).
+- **Structured Error Contract (`LocalMgrError`):** new `LocalMgrError` type (message/kind/detail/fix/command) replaces bare `String` error state in `HubDownloaderService` and `LocalAPIGateway`. Download failures now carry a stable `kind` (`auth-invalid-token`, `auth-license-not-accepted`, `network-transport`, `file-io`, etc.) instead of only a human-readable string, and gateway failures (409 conflicts, 503 no-runner, 502 upstream-unreachable/timeout, 400 malformed-request) are now logged via `AppLog` and serialized into the HTTP JSON error body from the exact same object, so a developer's curl/IDE output and the in-app Diagnostics view can never disagree about what happened (`[localmgr-2l5.6]`, `[localmgr-2l5.7]`, `[localmgr-2l5.8]`).
+- **Richer Hardware Detection:** `HardwareAutoTuner` now classifies a normalized `ChipTier` (M1–M5) from `hw.model`, reads performance/efficiency core counts via `hw.perflevel0/1.physicalcpu`, and offers an opt-in `gpuCoreCount()` probe via `system_profiler SPDisplaysDataType -json` (bounded 5s wait, not on the hot model-launch path). Any RAM-tiered capability inference (e.g. max safe context length) is now explicitly flagged as unconfirmed via `InferredCapability` rather than presented with the same confidence as a measured result (`[localmgr-2l5.9]`).
+- **Model Compatibility Tiers:** new `CompatibilityTier` classification (Verified / Recognized-Unverified / Unrecognized Architecture / Unparseable) for scanned GGUF and MLX models, surfaced as a badge in `ModelInspectorView`'s header (distinct from the existing engine-readiness badge) plus an inline actionable notice for any non-verified tier (`[localmgr-2l5.10]`, `[localmgr-2l5.11]`).
+
 ## [0.5.1] - 2026-07-16
 
 _Patch release (Build 9) fixing the curated model catalog's broken download paths._
@@ -116,7 +127,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/ghchinoy/localmgr/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/ghchinoy/localmgr/compare/v0.4.1...v0.4.2

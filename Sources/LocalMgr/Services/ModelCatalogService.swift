@@ -99,7 +99,7 @@ class ModelCatalogService: ObservableObject {
                 if fileURL.pathExtension.lowercased() == "gguf" {
                     let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
                     let headerInfo = GGUFHeaderParser.inspect(url: fileURL)
-                    let item = ModelItem(
+                    var item = ModelItem(
                         name: fileURL.deletingPathExtension().lastPathComponent,
                         fileURL: fileURL,
                         format: .gguf,
@@ -110,6 +110,13 @@ class ModelCatalogService: ObservableObject {
                         layerCount: headerInfo.layerCount,
                         headCountKV: headerInfo.headCountKV
                     )
+                    let compat = ModelCompatibilityClassifier.classifyGGUF(
+                        isValidGGUF: headerInfo.isValidGGUF,
+                        architectureMarker: headerInfo.architectureMarker
+                    )
+                    item.compatibilityTier = compat.tier
+                    item.compatibilityMessage = compat.message
+                    item.compatibilityRecommendedAction = compat.recommendedAction
                     scanned.append(item)
                 } else if ["tflite", "tfl", "task", "litert"].contains(fileURL.pathExtension.lowercased()) {
                     let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
@@ -131,7 +138,7 @@ class ModelCatalogService: ObservableObject {
                     let folderName = parentURL.lastPathComponent
                     if folderName.lowercased().contains("mlx") || (try? fileManager.contentsOfDirectory(atPath: parentURL.path).contains(where: { $0.hasSuffix(".safetensors") })) == true {
                         let size = calculateFolderSize(url: parentURL)
-                        let item = ModelItem(
+                        var item = ModelItem(
                             name: folderName,
                             fileURL: parentURL,
                             format: .mlx,
@@ -142,6 +149,12 @@ class ModelCatalogService: ObservableObject {
                             layerCount: 32,
                             headCountKV: 8
                         )
+                        let modelType = (try? Data(contentsOf: fileURL))
+                            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["model_type"] as? String
+                        let compat = ModelCompatibilityClassifier.classifyMLX(modelType: modelType)
+                        item.compatibilityTier = compat.tier
+                        item.compatibilityMessage = compat.message
+                        item.compatibilityRecommendedAction = compat.recommendedAction
                         scanned.append(item)
                     }
                 }

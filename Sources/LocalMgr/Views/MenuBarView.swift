@@ -43,7 +43,7 @@ struct MenuBarView: View {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.red)
-                    Text(error)
+                    Text(error.humanSummary)
                         .font(.caption2)
                         .foregroundColor(.red)
                         .lineLimit(3)

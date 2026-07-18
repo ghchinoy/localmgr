@@ -91,7 +91,7 @@ struct SidebarView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundColor(.red)
                                 .font(.caption2)
-                            Text(error)
+                            Text(error.humanSummary)
                                 .font(.caption2)
                                 .foregroundColor(.red)
                             Spacer()

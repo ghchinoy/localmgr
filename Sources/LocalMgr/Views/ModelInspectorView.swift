@@ -25,6 +25,15 @@ struct ModelInspectorView: View {
         monitor.calculateFitScore(for: model, contextLength: Int(contextLengthSlider))
     }
 
+    var compatibilityColor: Color {
+        switch model.compatibilityTier {
+        case .verified: return .green
+        case .recognizedUnverified: return .orange
+        case .unrecognizedArchitecture: return .orange
+        case .unparseable: return .red
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Header
@@ -32,9 +41,19 @@ struct ModelInspectorView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(model.name)
                         .font(.largeTitle.bold())
-                    Text("Engine: \(model.engineType.rawValue) • Format: \(model.format.rawValue)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    HStack(spacing: 8) {
+                        Text("Engine: \(model.engineType.rawValue) • Format: \(model.format.rawValue)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Label(model.compatibilityTier.badgeLabel, systemImage: model.compatibilityTier.symbolName)
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(compatibilityColor.opacity(0.15))
+                            .foregroundColor(compatibilityColor)
+                            .cornerRadius(4)
+                            .help("Compatibility tier: how confident LocalMgr is that this file's architecture is a verified combination with \(model.engineType.rawValue).")
+                    }
                 }
                 Spacer()
 
@@ -69,6 +88,32 @@ struct ModelInspectorView: View {
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.orange.opacity(0.15))
+                .cornerRadius(8)
+            }
+
+            // Compatibility-tier notice: distinct from the engine-readiness
+            // banner above -- that answers "is the engine binary installed
+            // at all", this answers "how confident is LocalMgr that this
+            // specific file's architecture is a combination it has
+            // verified with that engine". Only shown for non-verified
+            // tiers so a fully-verified model shows no extra chrome.
+            if model.compatibilityTier.isConcerning {
+                HStack(alignment: .top) {
+                    Image(systemName: model.compatibilityTier.symbolName)
+                        .foregroundColor(compatibilityColor)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(model.compatibilityTier.badgeLabel): \(model.compatibilityMessage)")
+                            .font(.subheadline)
+                        if let action = model.compatibilityRecommendedAction {
+                            Text(action)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(compatibilityColor.opacity(0.12))
                 .cornerRadius(8)
             }
 

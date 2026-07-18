@@ -11,11 +11,19 @@ import AppKit
 /// launch failures, auto-tuner decisions, etc).
 struct DiagnosticsView: View {
     @ObservedObject private var diagnostics = AppDiagnostics.shared
+    @EnvironmentObject var readiness: EngineReadinessService
     @Environment(\.dismiss) var dismiss
 
     @State private var selectedCategory: LogCategory?
     @State private var searchText: String = ""
     @State private var exportError: String?
+
+    /// All currently-known structured diagnostic checks (engine readiness,
+    /// HF CLI presence, etc), worst-status-first so failures are always
+    /// visible without scrolling.
+    private var diagnosticChecks: [DiagnosticCheck] {
+        readiness.allChecks.sorted { $0.status > $1.status }
+    }
 
     private var filteredEntries: [AppLogEntry] {
         var list = diagnostics.entries
@@ -66,16 +74,15 @@ struct DiagnosticsView: View {
                 .disabled(diagnostics.entries.isEmpty)
 
                 Button(action: copyToPasteboard) {
-                    Label("Copy", systemImage: "doc.on.doc")
+                    Label("Copy Diagnostics Bundle", systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.bordered)
-                .disabled(diagnostics.entries.isEmpty)
+                .help("Copies structured health checks plus recent log entries as one pasteable block, for bug reports.")
 
                 Button(action: exportToFile) {
                     Label("Export...", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(diagnostics.entries.isEmpty)
             }
             .padding()
 
@@ -86,6 +93,10 @@ struct DiagnosticsView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 4)
             }
+
+            Divider()
+
+            healthChecksSection
 
             Divider()
 
@@ -134,6 +145,53 @@ struct DiagnosticsView: View {
         .frame(width: 760, height: 560)
     }
 
+    /// Structured health-check summary (engine binaries, HF CLI), rendered
+    /// above the raw log feed. Distinct from -- and complementary to -- the
+    /// 🟢/🔴 engine-readiness badges shown per-model in `ModelListView`/
+    /// `ModelInspectorView`: this is the single place that shows *every*
+    /// check at once, worst-first, for a full-picture health snapshot.
+    private var healthChecksSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Health Checks", systemImage: "checklist")
+                    .font(.subheadline.bold())
+                Spacer()
+                let overall = diagnosticChecks.summarize()
+                Label(overall.rawValue, systemImage: overall.symbolName)
+                    .font(.caption.bold())
+                    .foregroundColor(color(for: overall))
+            }
+
+            ForEach(diagnosticChecks) { check in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: check.status.symbolName)
+                        .foregroundColor(color(for: check.status))
+                        .frame(width: 16)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(check.observed)
+                            .font(.caption)
+                        if let fix = check.fix {
+                            Text(fix)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    private func color(for status: DiagnosticStatus) -> Color {
+        switch status {
+        case .pass: return .green
+        case .warn: return .orange
+        case .fail: return .red
+        }
+    }
+
     private func color(for level: LogLevel) -> Color {
         switch level {
         case .debug: return .secondary
@@ -143,12 +201,39 @@ struct DiagnosticsView: View {
         }
     }
 
+    /// Builds the full pasteable/exportable diagnostics bundle: a structured
+    /// health-check summary followed by the chronological (oldest-first)
+    /// log feed, so a single copy/export captures both "what's currently
+    /// wrong" and "what happened recently" for a bug report.
     private func diagnosticsText() -> String {
         let formatter = ISO8601DateFormatter()
-        // Chronological order (oldest first) for exports/copies, regardless of the reversed on-screen list.
-        return diagnostics.entries.map { entry in
-            "[\(formatter.string(from: entry.timestamp))] [\(entry.level.rawValue.uppercased())] [\(entry.category.rawValue)] \(entry.message)"
-        }.joined(separator: "\n")
+
+        var sections: [String] = []
+
+        var checksBlock = "=== Health Checks (\(diagnosticChecks.summarize().rawValue)) ===\n"
+        if diagnosticChecks.isEmpty {
+            checksBlock += "(no checks recorded)"
+        } else {
+            checksBlock += diagnosticChecks.map { check in
+                var line = "[\(check.status.rawValue.uppercased())] \(check.id): \(check.observed)"
+                if let fix = check.fix { line += "\n  fix: \(fix)" }
+                if let command = check.command { line += "\n  command: \(command)" }
+                return line
+            }.joined(separator: "\n")
+        }
+        sections.append(checksBlock)
+
+        var logBlock = "=== Recent Log Entries (\(diagnostics.entries.count)) ===\n"
+        if diagnostics.entries.isEmpty {
+            logBlock += "(no diagnostic events recorded yet this session)"
+        } else {
+            logBlock += diagnostics.entries.map { entry in
+                "[\(formatter.string(from: entry.timestamp))] [\(entry.level.rawValue.uppercased())] [\(entry.category.rawValue)] \(entry.message)"
+            }.joined(separator: "\n")
+        }
+        sections.append(logBlock)
+
+        return sections.joined(separator: "\n\n")
     }
 
     private func copyToPasteboard() {
