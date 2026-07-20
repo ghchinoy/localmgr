@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Gateway Testing Assets:** new `testing/` directory with `opencode.jsonc` (a minimal OpenCode config, no MCP servers, isolating gateway checks from a daily-driver config's tool-schema payload size) and `smoke_test_gateway.sh` (standalone `curl`-based regression test covering the streaming, large-payload, and long-duration request handling fixed in `[localmgr-al0.1]`, `[localmgr-ae9]`, and `[localmgr-mtz]` — no OpenCode installation required). Referenced from `docs/USER_GUIDE.md`'s OpenCode section.
+
 ## [0.7.3] - 2026-07-19
 
 _Patch release (Build 14) fixing MemoryPressureGuard killing a runner mid-generation on any request longer than 3 seconds._

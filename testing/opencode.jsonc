@@ -1,0 +1,41 @@
+// Minimal OpenCode config for testing LocalMgr's API gateway
+// (Sources/LocalMgr/Services/LocalAPIGateway.swift) in isolation.
+//
+// Deliberately has NO other providers and NO MCP servers configured, unlike
+// a typical daily-driver opencode.jsonc. This keeps the request payload
+// small (no MCP tool schemas serialized into every completion request),
+// which is useful for two reasons:
+//   1. Fast iteration -- a quick sanity check doesn't need a large-context
+//      runner or a multi-second prompt-processing pass.
+//   2. Isolation -- if something breaks, you know it's the gateway/runner
+//      itself, not an interaction with a specific MCP server's tool schema
+//      size (see localmgr-ae9 and localmgr-mtz, both of which were only
+//      reproducible with large payloads/long-running requests).
+//
+// Usage:
+//   cp testing/opencode.jsonc ~/.config/opencode/opencode.jsonc   (back up your real one first!)
+//   -- or --
+//   OPENCODE_CONFIG=testing/opencode.jsonc opencode   (if your OpenCode build supports this)
+//
+// Update the two model IDs below to match models actually present in your
+// vault (check with: curl -s http://127.0.0.1:4891/v1/models | jq -r '.data[].id').
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "localmgr": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LocalMgr (local, testing)",
+      "options": {
+        "baseURL": "http://127.0.0.1:4891/v1"
+      },
+      "models": {
+        "gemma-4-E2B-it-Q4_K_M": {
+          "name": "Gemma 4 E2B (LocalMgr testing)"
+        },
+        "gemma-4-E4B-it-Q4_K_M": {
+          "name": "Gemma 4 E4B (LocalMgr testing)"
+        }
+      }
+    }
+  }
+}

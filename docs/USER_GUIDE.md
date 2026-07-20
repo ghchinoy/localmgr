@@ -78,6 +78,8 @@ A few things specific to using LocalMgr as an agent-harness backend rather than 
 - **Streaming works.** The gateway forwards `"stream": true` requests (OpenCode's default) as incremental Server-Sent Events rather than buffering the full response, so token-by-token output in OpenCode's UI behaves the same as against a hosted provider.
 - **One model per provider entry.** LocalMgr runs a single model at a time. If a request specifies a model different from the one currently active, the gateway returns `409 gateway-model-conflict` rather than automatically switching — it will not stop your current runner out from under an in-progress session. List only the model(s) you intend to use for a given LocalMgr session under `models` above, and switch models from LocalMgr's own UI (or restart the runner) rather than by pointing OpenCode at a different model name mid-session.
 
+For a minimal test config (no other providers/MCP servers, useful for isolating gateway issues from your daily-driver config) and a standalone `curl`-based smoke test covering the gateway's streaming, large-payload, and long-duration request handling, see [`testing/opencode.jsonc`](../testing/opencode.jsonc) and [`testing/smoke_test_gateway.sh`](../testing/smoke_test_gateway.sh) in this repo.
+
 ---
 
 ### Deep Dive: Querying Thinking & Reasoning Models (`reasoning_content`)
