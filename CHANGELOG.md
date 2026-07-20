@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-07-19
+
+_Patch release (Build 13) fixing a request-body truncation bug that broke every request from tool-heavy coding-agent clients like OpenCode._
+
+### Fixed
+- **Gateway Truncated Request Bodies Over 64KB:** `LocalAPIGateway.handleConnection()` read exactly one `NWConnection.receive` chunk (capped at 64KB) and treated it as the complete HTTP request, with no loop to keep reading until the full `Content-Length` body arrived. Any POST body larger than ~64KB was silently truncated mid-JSON-string before being forwarded upstream, which llama-server/mlx_lm.server then rejected with a raw parser error (`json.exception.parse_error.101 ... missing closing quote`) surfaced straight to the client. Discovered via a real OpenCode session: OpenCode's `@ai-sdk/openai-compatible` provider serializes the full MCP tool schema (name/description/parameters for every registered MCP server — Veo, Gemini, nanobanana, avtool, Stitch, etc.) into every chat completion request, routinely exceeding 64KB and hitting this bug on effectively every request. The connection handler now accumulates reads in a loop against the parsed `Content-Length` header until the full body has arrived (or the peer closes), with a 25MB hard cap enforced via a new `413 gateway-request-too-large` `LocalMgrError` rather than an unbounded read (`[localmgr-ae9]`).
+- **Verified live:** reproduced the exact truncation (~65KB boundary, identical `missing closing quote` error) with a synthetic 78862-byte payload before the fix; confirmed the same payload is now received intact after the fix (llama-server correctly computed 16236 prompt tokens from the full body and returned its own `exceed_context_size_error`, proving no truncation occurred). Confirmed no regression to small (<64KB) requests, GET endpoints, and the streaming path (`localmgr-al0.1`); confirmed the new 25MB cap correctly returns `413` with AppLog/response message parity.
+
 ## [0.7.1] - 2026-07-19
 
 _Patch release (Build 12) adding Server-Sent Events streaming passthrough to the API gateway, unblocking coding-agent clients (OpenCode, etc.) that default to `"stream": true`._

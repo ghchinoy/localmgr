@@ -118,19 +118,123 @@ class LocalAPIGateway: ObservableObject {
         isRunning = false
     }
 
+    /// Hard cap on total accumulated request size (headers + body), to bound
+    /// memory growth from a malicious or malformed client rather than
+    /// reading forever. Comfortably larger than any legitimate coding-agent
+    /// payload (OpenCode's full MCP tool-schema payloads have been observed
+    /// well under 1MB) while still being a finite limit.
+    nonisolated private static let maxRequestBytes = 25 * 1024 * 1024 // 25MB
+
+    /// Per-read chunk size passed to `NWConnection.receive`. This is *not*
+    /// a cap on total request size -- `accumulateRequest` loops additional
+    /// reads until the full `Content-Length` body (or connection close) has
+    /// been received, unlike the single-shot read this replaced (see
+    /// `localmgr-ae9`: that single 64KB read silently truncated any larger
+    /// POST body, corrupting its JSON before it ever reached the upstream
+    /// engine).
+    nonisolated private static let readChunkSize = 65536
+
     nonisolated private func handleConnection(_ connection: NWConnection) {
         connection.start(queue: .global(qos: .userInitiated))
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            guard let self = self, let data = data, !data.isEmpty else {
+        accumulateRequest(connection: connection, buffer: Data())
+    }
+
+    /// Reads from `connection` in a loop, accumulating bytes into `buffer`
+    /// until either (a) the HTTP header terminator plus a `Content-Length`
+    /// worth of body has been received, (b) the connection reports
+    /// completion (no `Content-Length`, e.g. a bodyless GET), or (c)
+    /// `maxRequestBytes` is exceeded. Replaces a prior single
+    /// `connection.receive(maximumLength: 65536)` call that treated
+    /// whatever arrived in one read as the complete request -- silently
+    /// truncating any request whose headers + body exceeded 64KB (see
+    /// `localmgr-ae9`).
+    nonisolated private func accumulateRequest(connection: NWConnection, buffer: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: Self.readChunkSize) { [weak self] data, _, isComplete, error in
+            guard let self = self else {
                 connection.cancel()
                 return
             }
 
-            Task {
-                await self.incrementRequestCount()
-                await self.processHTTPRequest(data: data, connection: connection)
+            var newBuffer = buffer
+            if let data = data, !data.isEmpty {
+                newBuffer.append(data)
             }
+
+            if newBuffer.isEmpty {
+                connection.cancel()
+                return
+            }
+
+            if newBuffer.count > Self.maxRequestBytes {
+                Task {
+                    await self.sendErrorResponse(connection: connection, status: 413, error: LocalMgrError(
+                        message: "Request body exceeded the gateway's \(Self.maxRequestBytes / (1024 * 1024))MB limit.",
+                        kind: "gateway-request-too-large"
+                    ))
+                }
+                return
+            }
+
+            // Have we received the full header block yet?
+            guard let headerEnd = newBuffer.range(of: Data("\r\n\r\n".utf8)) else {
+                // Headers incomplete -- keep reading (unless the peer already closed).
+                if isComplete || error != nil {
+                    connection.cancel()
+                    return
+                }
+                self.accumulateRequest(connection: connection, buffer: newBuffer)
+                return
+            }
+
+            let headerData = newBuffer.subdata(in: newBuffer.startIndex..<headerEnd.lowerBound)
+            let headerString = String(data: headerData, encoding: .utf8) ?? ""
+            let contentLength = Self.parseContentLength(fromHeaders: headerString)
+            let bodyBytesSoFar = newBuffer.count - headerEnd.upperBound
+
+            let bodyComplete: Bool
+            if let contentLength = contentLength {
+                bodyComplete = bodyBytesSoFar >= contentLength
+            } else {
+                // No Content-Length (typical for a bodyless GET) -- the
+                // header terminator itself marks the end of the request.
+                bodyComplete = true
+            }
+
+            if bodyComplete {
+                Task {
+                    await self.incrementRequestCount()
+                    await self.processHTTPRequest(data: newBuffer, connection: connection)
+                }
+                return
+            }
+
+            if isComplete || error != nil {
+                // Peer closed before sending the full declared body --
+                // forward what we have; downstream JSON parsing will
+                // surface a clear malformed-request error rather than
+                // hanging indefinitely.
+                Task {
+                    await self.incrementRequestCount()
+                    await self.processHTTPRequest(data: newBuffer, connection: connection)
+                }
+                return
+            }
+
+            self.accumulateRequest(connection: connection, buffer: newBuffer)
         }
+    }
+
+    /// Case-insensitively extracts the `Content-Length` value from a raw
+    /// HTTP header block, if present.
+    nonisolated private static func parseContentLength(fromHeaders headers: String) -> Int? {
+        for line in headers.components(separatedBy: "\r\n") {
+            let parts = line.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2, parts[0].trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Content-Length") == .orderedSame else {
+                continue
+            }
+            return Int(parts[1].trimmingCharacters(in: .whitespaces))
+        }
+        return nil
     }
 
     private func incrementRequestCount() {
