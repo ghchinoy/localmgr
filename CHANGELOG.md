@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-07-19
+
+_Patch release (Build 14) fixing MemoryPressureGuard killing a runner mid-generation on any request longer than 3 seconds._
+
+### Fixed
+- **Memory Pressure Guard Killed Long-Running Requests:** `BackendRunnerManager.recentlyActive` was a rolling-timestamp heuristic (`recordActivity()` called once when a request arrived, valid for a hardcoded 3-second window) rather than a true in-flight flag. Any single gateway request whose upstream processing exceeded 3 seconds — trivially the case for large-context, tool-heavy coding-agent prompts (OpenCode, Claude Code, etc.) — was incorrectly treated as "idle" by `MemoryPressureGuard`'s warning-level `stopIfIdle` check, so a WARNING-level memory pressure event during that window would silently kill the runner process mid-generation, with the client receiving no error and no answer. `BackendRunnerManager` now tracks an explicit `inFlightRequestCount` via `beginRequest()`/`endRequest()`, incremented for the full duration of every gateway chat-completion request (streaming and non-streaming) and Quick Test Ping, so `recentlyActive` reflects true in-flight state regardless of how long a request takes (`[localmgr-mtz]`).
+- **Verified live:** reproduced the fix's effect with a real ~29,000-token request (matching the magnitude of the original failure) taking ~35 seconds end-to-end — confirmed via a temporary debug probe that the runner's in-flight flag stayed `true` continuously for the entire duration and only cleared immediately after completion, closing the ~31-second window in which the old 3-second heuristic would have incorrectly reported the runner as idle. Confirmed no regression to small requests, streaming, GET endpoints, or the existing `MemoryPressureGuard.warningDeferWindow` (60s) backstop that intentionally still allows a deferred WARNING-level eviction to proceed even mid-request after a bounded wait.
+
 ## [0.7.2] - 2026-07-19
 
 _Patch release (Build 13) fixing a request-body truncation bug that broke every request from tool-heavy coding-agent clients like OpenCode._

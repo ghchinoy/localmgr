@@ -29,21 +29,31 @@ class BackendRunnerManager: ObservableObject {
     private var lastActivityDate: Date = Date()
     private var idleTimer: Timer?
 
-    /// Window within which a recorded activity timestamp is treated as "a
-    /// request is plausibly still in flight" for the purposes of
-    /// `MemoryPressureGuard`'s warning-level defer window. This is a
-    /// heuristic (LocalMgr does not currently track precise request
-    /// start/end boundaries per in-flight HTTP call) rather than an exact
-    /// in-flight flag -- good enough to avoid stopping a runner in the
-    /// middle of a burst of activity without adding request-level tracking.
-    private static let recentActivityWindow: TimeInterval = 3.0
+    /// Number of gateway requests (`/v1/chat/completions`, streaming or
+    /// non-streaming) currently in flight against this runner. Incremented
+    /// by `beginRequest()` when a request starts proxying to the upstream
+    /// engine and decremented by `endRequest()` in every exit path
+    /// (success, error, exception, upstream timeout).
+    ///
+    /// This replaces a prior rolling-timestamp heuristic (`recordActivity()`
+    /// / a 3-second `recentActivityWindow`) that only recorded *when a
+    /// request arrived*, not how long it ran -- any single request whose
+    /// upstream processing exceeded 3 seconds (trivially true for
+    /// large-context/tool-heavy coding-agent prompts) was incorrectly
+    /// treated as "idle" by `MemoryPressureGuard`'s warning-level check,
+    /// and could be killed mid-generation by `stopIfIdle`. See
+    /// `localmgr-mtz`: confirmed live -- a real ~30K-token OpenCode request
+    /// was killed by the memory-pressure guard 24+ seconds into prompt
+    /// processing, well before it ever reached `recentActivityWindow`'s
+    /// 3-second cutoff.
+    private var inFlightRequestCount: Int = 0
 
-    /// Whether activity (a gateway request, a Quick Test Ping, etc.) was
-    /// recorded recently enough that a runner should be treated as
-    /// plausibly mid-request for `MemoryPressureGuard` warning-level defer
-    /// purposes. See `recentActivityWindow`.
+    /// Whether at least one gateway request is currently in flight against
+    /// this runner. Used by `stopIfIdle` to ensure `MemoryPressureGuard`
+    /// never interrupts an active generation, regardless of how long it has
+    /// been running (see `inFlightRequestCount`).
     var recentlyActive: Bool {
-        Date().timeIntervalSince(lastActivityDate) < Self.recentActivityWindow
+        inFlightRequestCount > 0
     }
 
     init() {
@@ -58,8 +68,29 @@ class BackendRunnerManager: ObservableObject {
         self.appSettings = settings
     }
 
+    /// Marks a moment of gateway activity for `checkIdleTimeout`'s
+    /// idle-unload timer (`AppSettings.idleUnloadMinutes`). Distinct from
+    /// in-flight request tracking (`beginRequest`/`endRequest`) -- this is
+    /// only used to reset the "no requests for N minutes" unload countdown,
+    /// not to guard against mid-request eviction.
     func recordActivity() {
         self.lastActivityDate = Date()
+    }
+
+    /// Marks the start of a gateway request against this runner. Must be
+    /// paired with exactly one `endRequest()` call on every exit path
+    /// (success, error, thrown exception, upstream timeout) so
+    /// `inFlightRequestCount` never leaks upward and permanently blocks
+    /// idle eviction.
+    func beginRequest() {
+        inFlightRequestCount += 1
+    }
+
+    /// Marks the end of a gateway request previously started via
+    /// `beginRequest()`. Clamped at zero as a defensive measure against a
+    /// mismatched begin/end pair.
+    func endRequest() {
+        inFlightRequestCount = max(0, inFlightRequestCount - 1)
     }
 
     func sendTestPing(modelName: String, promptText: String) {
@@ -67,6 +98,7 @@ class BackendRunnerManager: ObservableObject {
         isPinging = true
         lastPingResponse = "Sending 256-token verification ping to http://127.0.0.1:\(port)/v1/chat/completions..."
         recordActivity()
+        beginRequest()
 
         let url = URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
         var req = URLRequest(url: url)
@@ -86,6 +118,7 @@ class BackendRunnerManager: ObservableObject {
                     await MainActor.run {
                         self.lastPingResponse = "Error: Did not receive valid HTTP response."
                         self.isPinging = false
+                        self.endRequest()
                     }
                     return
                 }
@@ -119,17 +152,20 @@ class BackendRunnerManager: ObservableObject {
                             self.lastPingResponse = "HTTP \(httpResp.statusCode) OK (Empty content returned): " + (String(data: data, encoding: .utf8) ?? "")
                         }
                         self.isPinging = false
+                        self.endRequest()
                     }
                 } else {
                     await MainActor.run {
                         self.lastPingResponse = "HTTP \(httpResp.statusCode): " + (String(data: data, encoding: .utf8) ?? "Unknown response")
                         self.isPinging = false
+                        self.endRequest()
                     }
                 }
             } catch {
                 await MainActor.run {
                     self.lastPingResponse = "Network error pinging model: \(error.localizedDescription)"
                     self.isPinging = false
+                    self.endRequest()
                 }
             }
         }

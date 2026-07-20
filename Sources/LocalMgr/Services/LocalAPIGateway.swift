@@ -449,6 +449,15 @@ class LocalAPIGateway: ObservableObject {
         proxyReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
         proxyReq.timeoutInterval = 1800.0
 
+        // Mark this request as in-flight against the runner for the entire
+        // duration of the upstream proxy call (streaming or buffered), so
+        // `MemoryPressureGuard`'s warning-level `stopIfIdle` check can never
+        // kill the runner mid-generation regardless of how long processing
+        // takes -- see `localmgr-mtz` (the prior rolling-timestamp heuristic
+        // only covered the first 3 seconds of a request).
+        runner.beginRequest()
+        defer { runner.endRequest() }
+
         if isStreaming {
             await proxyStreamingChatCompletion(proxyReq: proxyReq, runner: runner, connection: connection)
             return
