@@ -99,6 +99,9 @@ curl http://127.0.0.1:4891/v1/chat/completions \
   }'
 ```
 
+### Connect a coding agent (OpenCode, etc.)
+Coding-agent clients like [OpenCode](https://opencode.ai) work against the same gateway via `@ai-sdk/openai-compatible`, no API key required. Streaming (`"stream": true`) is forwarded incrementally rather than buffered. Since LocalMgr runs one model at a time, configure a single model per agent-facing provider entry — requesting a different model than the active one returns `409 gateway-model-conflict` rather than auto-switching. See [User Guide → Connecting OpenCode](docs/USER_GUIDE.md#connecting-opencode) for a copy-pasteable `opencode.jsonc` snippet.
+
 ### Scrape live Prometheus metrics and JSON stats
 LocalMgr records continuous runtime telemetry—including token volume, generation speed (`tok/s`), Time-to-First-Token (`TTFT`), KV cache hit rates, and thermal state—stored in append-only JSONL format at `~/Library/Application Support/LocalMgr/Telemetry/history.jsonl`. Scrape live observability endpoints directly from the gateway:
 

@@ -48,6 +48,38 @@ When your editor fires its first request, if the engine is asleep, LocalMgr inte
 
 ---
 
+### Connecting OpenCode
+
+[OpenCode](https://opencode.ai) talks to local models through its `@ai-sdk/openai-compatible` provider. Add a provider block to `opencode.jsonc` pointing at LocalMgr's gateway:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "localmgr": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LocalMgr (local)",
+      "options": {
+        "baseURL": "http://127.0.0.1:4891/v1"
+      },
+      "models": {
+        "gemma-4-E2B-it-Q4_K_M": {
+          "name": "Gemma 4 E2B (LocalMgr)"
+        }
+      }
+    }
+  }
+}
+```
+
+A few things specific to using LocalMgr as an agent-harness backend rather than an interactive IDE chat panel:
+
+- **No API key required.** `LocalAPIGateway` performs no `Authorization` header check, so `apiKey` can be omitted entirely from the provider block.
+- **Streaming works.** The gateway forwards `"stream": true` requests (OpenCode's default) as incremental Server-Sent Events rather than buffering the full response, so token-by-token output in OpenCode's UI behaves the same as against a hosted provider.
+- **One model per provider entry.** LocalMgr runs a single model at a time. If a request specifies a model different from the one currently active, the gateway returns `409 gateway-model-conflict` rather than automatically switching — it will not stop your current runner out from under an in-progress session. List only the model(s) you intend to use for a given LocalMgr session under `models` above, and switch models from LocalMgr's own UI (or restart the runner) rather than by pointing OpenCode at a different model name mid-session.
+
+---
+
 ### Deep Dive: Querying Thinking & Reasoning Models (`reasoning_content`)
 
 When querying modern **Reasoning / Thinking Models** (such as **Gemma 4**, **DeepSeek-R1**, or reasoning-tuned Qwen variants), you must format your requests carefully to prevent empty or truncated responses.

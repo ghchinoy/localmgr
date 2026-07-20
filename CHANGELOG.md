@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-07-19
+
+_Patch release (Build 12) adding Server-Sent Events streaming passthrough to the API gateway, unblocking coding-agent clients (OpenCode, etc.) that default to `"stream": true`._
+
+### Fixed
+- **Gateway Streaming Passthrough:** `LocalAPIGateway.handleChatCompletions()` previously used `URLSession.data(for:)` for every request, fully buffering the upstream response before replying — a `"stream": true` request from a coding-agent client (OpenCode's `@ai-sdk/openai-compatible` provider, Claude Code, etc.) either hung until generation finished or returned a malformed body. The gateway now detects `"stream": true` and proxies via `URLSession.bytes(for:)`, forwarding upstream SSE `data:` chunks to the client incrementally as they arrive, with `text/event-stream` response headers and a proper `[DONE]` sentinel. Non-streaming requests are unaffected (`[localmgr-al0.1]`).
+- **Real Time-to-First-Token for Streaming:** the streaming path now measures actual TTFT from the first non-empty SSE chunk (`ttftMs`), replacing the `durationMs * 0.2` estimate used by the buffered path — `/v1/stats` and `history.jsonl` telemetry now reflect genuine per-request TTFT for streamed completions (`[localmgr-al0.1]`).
+- **Verified live** against a real `llama-server` (Gemma 4 GGUF) instance through the actual LocalMgr gateway: confirmed incremental (non-buffered) chunk delivery via timestamped curl, correct `/v1/stats` population (`last_ttft_ms`, `last_tps`, `total_tokens_processed`), no regression to the non-streaming path or the existing 409 model-conflict/503 no-runner error paths, and graceful recovery (log/response parity preserved) when the upstream engine was killed mid-stream.
+
 ## [0.7.0] - 2026-07-18
 
 _Minor release (Build 11) adding a per-engine enable/disable toggle: Kokoro TTS and `gemma.cpp` now ship off by default as experimental engines, so machines without them installed no longer show permanent "Missing Engine" noise in the sidebar or Diagnostics view._

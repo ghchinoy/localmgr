@@ -289,9 +289,11 @@ class LocalAPIGateway: ObservableObject {
         }
 
         var requestedModelName: String?
+        var isStreaming = false
         if let bodyData = bodyData,
            let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] {
             requestedModelName = json["model"] as? String
+            isStreaming = (json["stream"] as? Bool) ?? false
         }
 
         if let reqName = requestedModelName, runner.activeModel?.name != reqName {
@@ -343,6 +345,11 @@ class LocalAPIGateway: ObservableObject {
         proxyReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
         proxyReq.timeoutInterval = 1800.0
 
+        if isStreaming {
+            await proxyStreamingChatCompletion(proxyReq: proxyReq, runner: runner, connection: connection)
+            return
+        }
+
         let startTime = CFAbsoluteTimeGetCurrent()
         do {
             let (respData, httpResp) = try await proxySession.data(for: proxyReq)
@@ -364,26 +371,14 @@ class LocalAPIGateway: ObservableObject {
             }
 
             runner.recordTelemetry(ttftMs: durationMs, durationMs: durationMs, completionTokens: completionTokens)
-            if let active = runner.activeModel {
-                let thState: String
-                switch ProcessInfo.processInfo.thermalState {
-                case .nominal: thState = "Nominal"
-                case .fair: thState = "Fair"
-                case .serious: thState = "Serious"
-                case .critical: thState = "Critical"
-                @unknown default: thState = "Unknown"
-                }
-                telemetry?.record(
-                    modelName: active.name,
-                    engine: active.engineType.rawValue,
-                    ttftMs: durationMs * 0.2,
-                    durationMs: durationMs,
-                    promptTokens: promptTokens,
-                    completionTokens: completionTokens,
-                    cachedTokens: cachedTokens,
-                    thermalState: thState
-                )
-            }
+            recordCompletionTelemetry(
+                runner: runner,
+                ttftMs: durationMs * 0.2,
+                durationMs: durationMs,
+                promptTokens: promptTokens,
+                completionTokens: completionTokens,
+                cachedTokens: cachedTokens
+            )
 
             if let respString = String(data: respData, encoding: .utf8) {
                 sendHTTPResponse(connection: connection, status: statusCode, body: respString)
@@ -403,6 +398,157 @@ class LocalAPIGateway: ObservableObject {
                 detail: error.localizedDescription,
                 fix: "Confirm the runner is still running (check Live Logs) and that its port matches the gateway's configured runner port."
             ))
+        }
+    }
+
+    /// Records completion telemetry for both `BackendRunnerManager` (drives
+    /// `/v1/stats`) and `TelemetryStore` (drives `history.jsonl` + Ops
+    /// Dashboard), shared by both the buffered and streaming chat-completion
+    /// paths so the two proxy modes can never diverge in what they record.
+    private func recordCompletionTelemetry(
+        runner: BackendRunnerManager,
+        ttftMs: Double,
+        durationMs: Double,
+        promptTokens: Int,
+        completionTokens: Int,
+        cachedTokens: Int
+    ) {
+        guard let active = runner.activeModel else { return }
+        let thState: String
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal: thState = "Nominal"
+        case .fair: thState = "Fair"
+        case .serious: thState = "Serious"
+        case .critical: thState = "Critical"
+        @unknown default: thState = "Unknown"
+        }
+        telemetry?.record(
+            modelName: active.name,
+            engine: active.engineType.rawValue,
+            ttftMs: ttftMs,
+            durationMs: durationMs,
+            promptTokens: promptTokens,
+            completionTokens: completionTokens,
+            cachedTokens: cachedTokens,
+            thermalState: thState
+        )
+    }
+
+    /// Proxies a `"stream": true` chat-completion request to the upstream
+    /// engine (`llama-server` / `mlx_lm.server`) using `URLSession.bytes(for:)`
+    /// so Server-Sent Events chunks are forwarded to the client incrementally
+    /// as they arrive, instead of being buffered until the full generation
+    /// completes (see `localmgr-al0.1`).
+    ///
+    /// Real time-to-first-token is measured from the first non-empty SSE
+    /// `data:` line, replacing the `durationMs * 0.2` TTFT estimate used by
+    /// the non-streaming path -- streaming lets us record a genuine TTFT
+    /// rather than an approximation.
+    private func proxyStreamingChatCompletion(proxyReq: URLRequest, runner: BackendRunnerManager, connection: NWConnection) async {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        var firstChunkTime: Double?
+        var completionTokens = 0
+        var promptTokens = 0
+        var cachedTokens = 0
+        var headersSent = false
+
+        do {
+            let (byteStream, httpResp) = try await proxySession.bytes(for: proxyReq)
+            let statusCode = (httpResp as? HTTPURLResponse)?.statusCode ?? 200
+
+            guard statusCode == 200 else {
+                // Upstream rejected the request outright (e.g. bad payload).
+                // No SSE headers have been sent yet, so we can still reply
+                // with a normal JSON error body.
+                var errorBody = Data()
+                for try await line in byteStream.lines {
+                    errorBody.append(Data((line + "\n").utf8))
+                }
+                let bodyString = String(data: errorBody, encoding: .utf8) ?? ""
+                sendErrorResponse(connection: connection, status: statusCode, error: LocalMgrError(
+                    message: "The local engine rejected the streaming request.",
+                    kind: "gateway-upstream-error",
+                    detail: bodyString.isEmpty ? nil : bodyString
+                ))
+                return
+            }
+
+            sendSSEHeaders(connection: connection)
+            headersSent = true
+
+            for try await line in byteStream.lines {
+                guard line.hasPrefix("data:") else { continue }
+                let payload = line.dropFirst("data:".count).trimmingCharacters(in: .whitespaces)
+
+                if firstChunkTime == nil, !payload.isEmpty {
+                    firstChunkTime = CFAbsoluteTimeGetCurrent()
+                }
+
+                if payload == "[DONE]" {
+                    sendSSEChunk(connection: connection, line: line)
+                    break
+                }
+
+                if let chunkData = payload.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: chunkData) as? [String: Any] {
+                    if let usage = json["usage"] as? [String: Any] {
+                        completionTokens = usage["completion_tokens"] as? Int ?? completionTokens
+                        promptTokens = usage["prompt_tokens"] as? Int ?? promptTokens
+                        if let details = usage["prompt_tokens_details"] as? [String: Any] {
+                            cachedTokens = details["cached_tokens"] as? Int ?? cachedTokens
+                        }
+                    }
+                }
+
+                sendSSEChunk(connection: connection, line: line)
+            }
+
+            closeSSEStream(connection: connection)
+
+            let durationMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
+            let ttftMs = firstChunkTime.map { ($0 - startTime) * 1000.0 } ?? durationMs
+            if completionTokens == 0 {
+                // Some engines omit a final `usage` chunk in streaming mode;
+                // fall back to the same rough estimate the buffered path
+                // uses when `usage` is absent.
+                completionTokens = max(1, Int(durationMs / 4))
+            }
+
+            runner.recordTelemetry(ttftMs: ttftMs, durationMs: durationMs, completionTokens: completionTokens)
+            recordCompletionTelemetry(
+                runner: runner,
+                ttftMs: ttftMs,
+                durationMs: durationMs,
+                promptTokens: promptTokens,
+                completionTokens: completionTokens,
+                cachedTokens: cachedTokens
+            )
+        } catch {
+            if headersSent {
+                // SSE headers (and likely some chunks) already went out --
+                // we can no longer send a structured JSON error body without
+                // corrupting the stream for the client. Log it and close.
+                let isTimeout = (error as NSError).code == NSURLErrorTimedOut
+                recordGatewayError(LocalMgrError(
+                    message: isTimeout
+                        ? "The streaming request to the local engine timed out mid-stream."
+                        : "The streaming connection to the local engine was interrupted.",
+                    kind: isTimeout ? "gateway-upstream-timeout" : "gateway-upstream-unreachable",
+                    detail: error.localizedDescription,
+                    fix: "Confirm the runner is still running (check Live Logs) and that its port matches the gateway's configured runner port."
+                ))
+                closeSSEStream(connection: connection)
+            } else {
+                let isTimeout = (error as NSError).code == NSURLErrorTimedOut
+                sendErrorResponse(connection: connection, status: 502, error: LocalMgrError(
+                    message: isTimeout
+                        ? "The request to the local engine timed out."
+                        : "Couldn't reach the local engine.",
+                    kind: isTimeout ? "gateway-upstream-timeout" : "gateway-upstream-unreachable",
+                    detail: error.localizedDescription,
+                    fix: "Confirm the runner is still running (check Live Logs) and that its port matches the gateway's configured runner port."
+                ))
+            }
         }
     }
 
@@ -442,6 +588,39 @@ class LocalAPIGateway: ObservableObject {
 
         let data = Data(response.utf8)
         connection.send(content: data, completion: .contentProcessed { _ in
+            connection.cancel()
+        })
+    }
+
+    /// Sends the initial HTTP response line + headers for a Server-Sent
+    /// Events stream, leaving the connection open for subsequent
+    /// `sendSSEChunk` calls (no `Content-Length`, `Connection: keep-alive`
+    /// rather than the one-shot `sendHTTPResponse`'s `Connection: close`).
+    nonisolated private func sendSSEHeaders(connection: NWConnection) {
+        let headers = """
+        HTTP/1.1 200 OK\r
+        Content-Type: text/event-stream\r
+        Cache-Control: no-cache\r
+        Connection: keep-alive\r
+        Access-Control-Allow-Origin: *\r
+        \r
+
+        """
+        connection.send(content: Data(headers.utf8), completion: .contentProcessed { _ in })
+    }
+
+    /// Sends a single already-framed SSE line (e.g. `data: {...}` or
+    /// `data: [DONE]`) to the client, terminated with the SSE double
+    /// newline. The connection is kept open for further chunks.
+    nonisolated private func sendSSEChunk(connection: NWConnection, line: String) {
+        let frame = line + "\n\n"
+        connection.send(content: Data(frame.utf8), completion: .contentProcessed { _ in })
+    }
+
+    /// Closes an SSE connection after the stream has finished (either via a
+    /// `[DONE]` sentinel or an upstream error mid-stream).
+    nonisolated private func closeSSEStream(connection: NWConnection) {
+        connection.send(content: nil, completion: .contentProcessed { _ in
             connection.cancel()
         })
     }
