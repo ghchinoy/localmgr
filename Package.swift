@@ -18,6 +18,11 @@ let package = Package(
             resources: [
                 .process("Resources")
             ]
+        ),
+        .testTarget(
+            name: "LocalMgrTests",
+            dependencies: ["LocalMgr"],
+            path: "Tests/LocalMgrTests"
         )
     ]
 )

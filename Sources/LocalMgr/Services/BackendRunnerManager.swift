@@ -10,6 +10,8 @@ enum RunnerStatus: String {
 
 @MainActor
 class BackendRunnerManager: ObservableObject {
+    @Published var state: RunnerState = RunnerState()
+
     @Published var activeModel: ModelItem?
     @Published var lastRunModelID: UUID?
     @Published var status: RunnerStatus = .stopped
@@ -22,6 +24,19 @@ class BackendRunnerManager: ObservableObject {
     @Published var lastTTFTMilliseconds: Double = 0.0
     @Published var lastTokensPerSecond: Double = 0.0
     @Published var sessionStartTime: Date? = nil
+
+    private func syncState(_ newState: RunnerState) {
+        self.state = newState
+        self.status = newState.status.legacyStatus
+        self.activeModel = newState.activeModel
+        self.lastRunModelID = newState.lastRunModelID
+        self.logOutput = newState.logOutput
+        self.totalRequestsServed = newState.totalRequestsServed
+        self.totalTokensProcessed = newState.totalTokensProcessed
+        self.lastTTFTMilliseconds = newState.lastTTFTMilliseconds
+        self.lastTokensPerSecond = newState.lastTokensPerSecond
+        self.sessionStartTime = newState.sessionStartTime
+    }
 
     private var currentProcess: Process?
     private var pipe: Pipe?
@@ -94,7 +109,7 @@ class BackendRunnerManager: ObservableObject {
     }
 
     func sendTestPing(modelName: String, promptText: String) {
-        guard status == .running else { return }
+        guard state.status == .running else { return }
         isPinging = true
         lastPingResponse = "Sending 256-token verification ping to http://127.0.0.1:\(port)/v1/chat/completions..."
         recordActivity()
@@ -172,10 +187,11 @@ class BackendRunnerManager: ObservableObject {
     }
 
     private func checkIdleTimeout() {
-        guard status == .running, let settings = appSettings, settings.enableIdleUnload else { return }
+        guard state.status == .running, let settings = appSettings, settings.enableIdleUnload else { return }
         let elapsedMinutes = Date().timeIntervalSince(lastActivityDate) / 60.0
         if elapsedMinutes >= Double(settings.idleUnloadMinutes) {
-            self.logOutput.append("\n[Idle Reclaimer]: Zero inference requests for \(settings.idleUnloadMinutes)m. Unloading model weights from VRAM to preserve system RAM.\n")
+            let msg = "\n[Idle Reclaimer]: Zero inference requests for \(settings.idleUnloadMinutes)m. Unloading model weights from VRAM to preserve system RAM.\n"
+            self.syncState(self.state.appendLog(msg))
             AppLog.info("Idle reclaimer unloading '\(activeModel?.name ?? "unknown model")' after \(settings.idleUnloadMinutes)m of inactivity", category: .runner)
             stopCurrent()
         }
@@ -191,34 +207,24 @@ class BackendRunnerManager: ObservableObject {
         // so this is defense-in-depth for whenever that changes, and for
         // any future manual/programmatic model construction.
         if let appSettings, !appSettings.isEngineEnabled(model.engineType) {
-            self.status = .error
             let error = LocalMgrError(
                 message: "\(model.engineType.rawValue) is disabled in Settings.",
                 kind: "engine-disabled",
                 fix: "Enable it in Settings → Hardware & Engines, then try again."
             )
-            self.logOutput.append("\nERROR: \(error.humanSummary)\n")
+            self.syncState(self.state.markError(reason: error.humanSummary))
             AppLog.error(error.logSummary, category: .runner)
             return
         }
 
         stopCurrent()
         recordActivity()
-        self.activeModel = model
-        self.lastRunModelID = model.id
-        self.status = .starting
-        self.sessionStartTime = Date()
-        self.totalRequestsServed = 0
-        self.totalTokensProcessed = 0
-        self.lastTTFTMilliseconds = 0.0
-        self.lastTokensPerSecond = 0.0
-        self.logOutput = "\n--- Starting \(model.name) via \(model.engineType.rawValue) ---\n"
         self.lastPingResponse = ""
+        self.syncState(self.state.start(model: model))
 
         let binaryName = model.engineType.defaultBinaryName
         guard let binaryPath = resolveBinaryPath(name: binaryName) else {
-            self.status = .error
-            self.logOutput.append("ERROR: Could not find binary '\(binaryName)' in system PATH or App Support.\n")
+            self.syncState(self.state.markError(reason: "Could not find binary '\(binaryName)' in system PATH or App Support."))
             AppLog.error("Could not find engine binary '\(binaryName)' for \(model.name) in system PATH or App Support", category: .runner)
             return
         }
@@ -234,17 +240,17 @@ class BackendRunnerManager: ObservableObject {
         case .llamaCpp:
             if autoTuneEnabled {
                 let profile = HardwareAutoTuner.detectProfile(physicalMemoryBytes: Int64(ProcessInfo.processInfo.physicalMemory))
-                self.logOutput.append("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Injecting -ngl \(profile.recommendedGPULayers), --flash-attn on, ctx \(profile.maxSafeContext)\n")
+                self.syncState(self.state.appendLog("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Injecting -ngl \(profile.recommendedGPULayers), --flash-attn on, ctx \(profile.maxSafeContext)\n"))
                 AppLog.info("Auto-tuned \(model.name) for \(profile.rawModel): -ngl \(profile.recommendedGPULayers), ctx \(profile.maxSafeContext)", category: .runner)
                 args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "\(profile.recommendedGPULayers)", "-c", "\(min(defaultCtx, profile.maxSafeContext))", "--flash-attn", "on"]
             } else {
-                self.logOutput.append("[Hardware Auto-Tuner]: Opted out in Settings. Using manual flags (-ngl 99, ctx \(defaultCtx))\n")
+                self.syncState(self.state.appendLog("[Hardware Auto-Tuner]: Opted out in Settings. Using manual flags (-ngl 99, ctx \(defaultCtx))\n"))
                 args = ["-m", model.fileURL.path, "--port", "\(port)", "-ngl", "99", "-c", "\(defaultCtx)"]
             }
         case .mlx:
             if autoTuneEnabled {
                 let profile = HardwareAutoTuner.detectProfile(physicalMemoryBytes: Int64(ProcessInfo.processInfo.physicalMemory))
-                self.logOutput.append("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Optimizing MLX server launch.\n")
+                self.syncState(self.state.appendLog("[Hardware Auto-Tuner]: Detected \(profile.rawModel) (\(profile.chipFamily)). Optimizing MLX server launch.\n"))
                 AppLog.info("Auto-tuned \(model.name) for \(profile.rawModel) (MLX)", category: .runner)
             }
             args = ["--model", model.fileURL.path, "--port", "\(port)"]
@@ -270,10 +276,12 @@ class BackendRunnerManager: ObservableObject {
             let data = handle.availableData
             if let text = String(data: data, encoding: .utf8), !text.isEmpty {
                 Task { @MainActor [weak self] in
-                    self?.logOutput.append(text)
-                    if self?.status == .starting && (text.contains("HTTP server listening") || text.contains("running on http")) {
-                        self?.status = .running
+                    guard let self = self else { return }
+                    var nextState = self.state.appendLog(text)
+                    if nextState.status == .starting && (text.contains("HTTP server listening") || text.contains("running on http")) {
+                        nextState = nextState.markRunning()
                     }
+                    self.syncState(nextState)
                 }
             }
         }
@@ -283,16 +291,12 @@ class BackendRunnerManager: ObservableObject {
                 guard let self = self else { return }
                 let code = proc.terminationStatus
                 if code != 0 {
-                    self.status = .error
-                    self.logOutput.append("\n[Runner process terminated unexpectedly with exit code \(code)]\n")
                     AppLog.error("Runner '\(model.name)' (\(binaryName)) terminated unexpectedly with exit code \(code)", category: .runner)
                 } else {
-                    self.status = .stopped
-                    self.logOutput.append("\n[Runner process exited cleanly]\n")
                     AppLog.info("Runner '\(model.name)' (\(binaryName)) exited cleanly", category: .runner)
                 }
+                self.syncState(self.state.terminate(exitCode: code))
                 self.currentProcess = nil
-                self.activeModel = nil
             }
         }
 
@@ -302,27 +306,28 @@ class BackendRunnerManager: ObservableObject {
             AppLog.info("Launched \(binaryName) for '\(model.name)' on port \(port)", category: .runner)
             // Fallback status change if no specific string matched within 2 seconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                if self.status == .starting && process.isRunning {
-                    self.status = .running
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    if self.state.status == .starting && process.isRunning {
+                        self.syncState(self.state.markRunning())
+                    }
                 }
             }
         } catch {
-            self.status = .error
-            self.logOutput.append("Failed to launch process: \(error.localizedDescription)\n")
+            self.syncState(self.state.markError(reason: "Failed to launch process: \(error.localizedDescription)"))
             AppLog.error("Failed to launch \(binaryName) for '\(model.name)': \(error.localizedDescription)", category: .runner)
         }
     }
 
     func stopCurrent() {
+        var nextState = self.state.stop()
         if let process = currentProcess, process.isRunning {
             process.terminate()
-            self.logOutput.append("\n--- Terminated runner process ---\n")
+            nextState = nextState.appendLog("\n--- Terminated runner process ---\n")
             AppLog.info("Manually terminated runner '\(activeModel?.name ?? "unknown model")'", category: .runner)
         }
         currentProcess = nil
-        activeModel = nil
-        status = .stopped
-        sessionStartTime = nil
+        self.syncState(nextState)
     }
 
     /// Stops the current runner in response to a `.softEvict`
@@ -335,9 +340,10 @@ class BackendRunnerManager: ObservableObject {
     /// recently-used idle runner" reduces to "the current runner, if idle".
     @discardableResult
     func stopIfIdle(reason: String) -> Bool {
-        guard status == .running, !recentlyActive else { return false }
-        logOutput.append("\n[Memory Pressure]: \(reason)\n")
+        guard state.status == .running, !recentlyActive else { return false }
         AppLog.info("MemoryPressureGuard soft-evicted idle runner '\(activeModel?.name ?? "unknown model")': \(reason)", category: .runner)
+        let msg = "\n[Memory Pressure]: \(reason)\n"
+        self.syncState(self.state.appendLog(msg))
         stopCurrent()
         return true
     }
@@ -351,14 +357,15 @@ class BackendRunnerManager: ObservableObject {
     /// through `MemoryPressureGuard`'s edge-triggered/re-arm policy instead
     /// of firing unconditionally on every critical `DispatchSource` event.
     func stopForCriticalPressure(reason: String) {
-        guard status == .running else { return }
-        logOutput.append("\n[EMERGENCY PRESSURE RELEASE]: \(reason)\n")
+        guard state.status == .running else { return }
         AppLog.fault("MemoryPressureGuard hard-evicted runner '\(activeModel?.name ?? "unknown model")' under critical pressure: \(reason)", category: .runner)
+        let msg = "\n[EMERGENCY PRESSURE RELEASE]: \(reason)\n"
+        self.syncState(self.state.appendLog(msg))
         stopCurrent()
     }
 
     func clearLogs() {
-        self.logOutput = ""
+        self.syncState(self.state.clearLogs())
     }
 
     func clearPingResponse() {
@@ -366,12 +373,7 @@ class BackendRunnerManager: ObservableObject {
     }
 
     func recordTelemetry(ttftMs: Double, durationMs: Double, completionTokens: Int) {
-        self.totalRequestsServed += 1
-        self.totalTokensProcessed += completionTokens
-        if ttftMs > 0 { self.lastTTFTMilliseconds = ttftMs }
-        if durationMs > 0 && completionTokens > 0 {
-            self.lastTokensPerSecond = Double(completionTokens) / (durationMs / 1000.0)
-        }
+        self.syncState(self.state.recordTelemetry(ttftMs: ttftMs, durationMs: durationMs, completionTokens: completionTokens))
         recordActivity()
     }
 
