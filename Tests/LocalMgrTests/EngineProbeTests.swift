@@ -38,6 +38,24 @@ final class EngineProbeTests: XCTestCase {
         XCTAssertEqual(EngineProbe.extractSampleText(from: json), "")
     }
 
+    /// Reasoning models can return empty `content` but non-empty
+    /// `reasoning_content` when a short max_tokens budget is spent entirely on
+    /// reasoning; that is still coherent output and must pass the sanity gate.
+    /// (Regression: caught live during jhj.11 benchmarking with gemma-4-E2B.)
+    func testExtractSampleTextFallsBackToReasoningContent() {
+        let json = """
+        {"choices":[{"message":{"role":"assistant","content":"","reasoning_content":"Thinking Process: 1. analyze..."}}]}
+        """.data(using: .utf8)!
+        XCTAssertEqual(EngineProbe.extractSampleText(from: json), "Thinking Process: 1. analyze...")
+    }
+
+    func testExtractSampleTextPrefersContentOverReasoning() {
+        let json = """
+        {"choices":[{"message":{"content":"final answer","reasoning_content":"some thinking"}}]}
+        """.data(using: .utf8)!
+        XCTAssertEqual(EngineProbe.extractSampleText(from: json), "final answer")
+    }
+
     func testTokensPerSecondMath() {
         let m = EngineProbe.CompletionMeasurement(
             succeeded: true, completionTokens: 80, durationMs: 500.0, sampleText: "ok"

@@ -201,7 +201,7 @@ enum EmpiricalTuner {
         profile: ChipProfile,
         contextLength: Int,
         settleSeconds: Double = 1.5,
-        log: @escaping (String) -> Void = { _ in }
+        log: @escaping @Sendable (String) -> Void = { _ in }
     ) async -> TuneReport {
         let candidates = generateCandidates(engine: engine, profile: profile, contextLength: contextLength)
         var results: [CandidateResult] = []
@@ -241,7 +241,7 @@ enum EmpiricalTuner {
         binaryPath: String,
         port: Int,
         candidate: Candidate,
-        log: @escaping (String) -> Void
+        log: @escaping @Sendable (String) -> Void
     ) async -> CandidateResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binaryPath)

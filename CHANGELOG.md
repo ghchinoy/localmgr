@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-21
+
+_Minor release (Build 20) adding empirical, measured-on-this-machine auto-tuning: benchmark real engine throughput, cache the winner, and prove the speedup in the UI before adopting it._
+
+### Added
+- **Empirical Auto-Tuner (measured throughput):** New `EmpiricalTuner` benchmarks 2–3 candidate engine configurations for a model by launching each as a fully isolated, watchdog-guarded subprocess on an ephemeral port and measuring real tok/s over a fixed prompt suite. For llama.cpp it varies genuine performance knobs (`-ngl`, thread count, batch size); MLX gets a measured baseline (richer MLX candidates tracked as follow-up). Context length is held **fixed** at the user's `Default Context Length` across every candidate — the tuner never varies or silently overrides a user's context-length setting, which is a correctness knob, not a performance knob (`[localmgr-jhj.9]`).
+- **Winner Selection + Hardware/Software-Keyed Cache:** The fastest candidate that passes a sanity gate wins, with a 2% tie-margin favoring the more conservative (lower-resource) configuration — important for GPU-bound models where CPU-knob candidates measure near-identically. The winner is cached under `~/Library/Application Support/LocalMgr/Tuning/`, keyed by a hash of chip tier + total RAM + engine binary identity + model identity + context length, so any hardware, engine-upgrade, model, or context-length change automatically invalidates it with no TTL. A cached result can never change the current context-length setting (`[localmgr-jhj.10]`).
+- **"Auto-Tune (Measured)" UI Action:** `ModelInspectorView` gains an opt-in Auto-Tune button that runs the empirical tuner and shows a concrete before/after tok/s comparison as a clear win moment. If no candidate beats the heuristic default, the UI explicitly says so rather than silently applying a non-improvement, and always notes that the context length was held at the user's setting (`[localmgr-jhj.11]`).
+
+### Fixed
+- **Reasoning-Model Sanity Gate:** The tuner's output sanity check now honors `reasoning_content`, so reasoning ("thinking") models that spend a short measurement budget entirely on reasoning (empty `content`) are correctly scored as producing coherent output instead of being rejected as failed candidates. Caught live while benchmarking gemma-4-E2B (`[localmgr-jhj.11]`).
+
+### Changed
+- **Shared `EngineProbe` helpers:** Binary resolution, HTTP health probing, and throughput measurement were extracted from `BackendRunnerManager` into a shared `EngineProbe` used by both the runner and the empirical tuner, eliminating three subtly-different copies (`[localmgr-jhj.9]`).
+
 ## [0.9.0] - 2026-07-21
 
 _Minor release (Build 19) hardening engine orchestration: subprocess watchdog termination, bounded log capture, reactive startup phases, on-demand gateway wake-up detail, and adoption of existing healthy engines on relaunch._

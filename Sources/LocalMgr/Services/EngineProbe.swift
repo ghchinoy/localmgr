@@ -99,6 +99,16 @@ enum EngineProbe {
     /// Extracts a short textual sample from an OpenAI-compatible chat response,
     /// used only for the sanity gate ("did it produce coherent, non-empty
     /// output?"). Returns an empty string when nothing usable was found.
+    /// Extracts a short textual sample from an OpenAI-compatible chat response,
+    /// used only for the sanity gate ("did it produce coherent, non-empty
+    /// output?"). Returns an empty string when nothing usable was found.
+    ///
+    /// Also honors `reasoning_content`: reasoning models (e.g. Gemma "thinking"
+    /// variants) can spend a short `max_tokens` budget entirely on reasoning and
+    /// return an empty `content` -- that is still coherent generated output and
+    /// must pass the sanity gate, not be treated as a failed candidate. (Caught
+    /// live during jhj.11 benchmarking: gemma-4-E2B filled 128 tokens of
+    /// reasoning_content with empty content, which previously failed selection.)
     static func extractSampleText(from data: Data) -> String {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
@@ -106,10 +116,12 @@ enum EngineProbe {
             return ""
         }
         if let msg = first["message"] as? [String: Any] {
-            if let content = msg["content"] as? String { return content }
+            if let content = msg["content"] as? String, !content.isEmpty { return content }
             if let contentArr = msg["content"] as? [[String: Any]] {
-                return contentArr.compactMap { $0["text"] as? String }.joined(separator: " ")
+                let joined = contentArr.compactMap { $0["text"] as? String }.joined(separator: " ")
+                if !joined.isEmpty { return joined }
             }
+            if let reasoning = msg["reasoning_content"] as? String, !reasoning.isEmpty { return reasoning }
         }
         if let text = first["text"] as? String { return text }
         return ""

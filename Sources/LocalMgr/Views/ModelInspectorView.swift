@@ -10,6 +10,9 @@ struct ModelInspectorView: View {
     @State private var selectedTab: Int = 0
     @State private var contextLengthSlider: Double = 8192
 
+    /// Drives the on-demand "Auto-Tune (Measured)" run (localmgr-jhj.11).
+    @StateObject private var autoTune = AutoTuneCoordinator()
+
     /// 3-state badge (see `ModelListView.swift`): `.ready`, `.missing`
     /// (binary not installed), or `.disabled` (turned off in Settings).
     var engineBadgeState: EngineReadinessBadgeState {
@@ -45,6 +48,77 @@ struct ModelInspectorView: View {
         }
     }
 
+    /// Whether an Auto-Tune (Measured) run is currently in progress.
+    var isAutoTuneRunning: Bool {
+        if case .running = autoTune.phase { return true }
+        return false
+    }
+
+    /// Before/after result (or progress/error) card for Auto-Tune (Measured)
+    /// (localmgr-jhj.11). Renders nothing while idle.
+    @ViewBuilder
+    var autoTuneResultCard: some View {
+        switch autoTune.phase {
+        case .idle:
+            EmptyView()
+        case .running(let msg):
+            HStack(spacing: 12) {
+                ProgressView().controlSize(.small)
+                Text(msg).font(.subheadline)
+                Spacer()
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.12))
+            .cornerRadius(8)
+        case .unsupported(let msg), .failed(let msg):
+            HStack(spacing: 12) {
+                Image(systemName: "info.circle.fill").foregroundColor(.secondary).font(.title3)
+                Text(msg).font(.subheadline)
+                Spacer()
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.12))
+            .cornerRadius(8)
+        case .done:
+            if let outcome = autoTune.outcome {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        Image(systemName: outcome.improved ? "bolt.fill" : "checkmark.seal")
+                            .foregroundColor(outcome.improved ? .green : .secondary)
+                            .font(.title2)
+                        Text(outcome.headline)
+                            .font(.headline)
+                        Spacer()
+                    }
+                    if !outcome.servedFromCache {
+                        HStack(spacing: 24) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Before (heuristic default)").font(.caption).foregroundColor(.secondary)
+                                Text(String(format: "%.1f tok/s", outcome.baselineTPS)).font(.title3.bold())
+                            }
+                            Image(systemName: "arrow.right").foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("After (\(outcome.winnerLabel))").font(.caption).foregroundColor(.secondary)
+                                Text(String(format: "%.1f tok/s", outcome.winnerTPS))
+                                    .font(.title3.bold())
+                                    .foregroundColor(outcome.improved ? .green : .primary)
+                            }
+                        }
+                    }
+                    Text("Context length held at \(outcome.contextLength) tokens (your setting was not changed).")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background((outcome.improved ? Color.green : Color.secondary).opacity(0.12))
+                .cornerRadius(8)
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Header
@@ -68,6 +142,18 @@ struct ModelInspectorView: View {
                 }
                 Spacer()
 
+                // Auto-Tune (Measured): opt-in empirical benchmark (localmgr-jhj.11).
+                if EmpiricalTuner.isTunable(model.engineType) {
+                    Button(action: {
+                        Task { await autoTune.runTune(for: model, contextLength: settings.defaultContextLength) }
+                    }) {
+                        Label("Auto-Tune (Measured)", systemImage: "gauge.with.dots.needle.67percent")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!isEngineReady || isAutoTuneRunning)
+                    .help("Benchmark real throughput for candidate engine configurations on this machine and prove any speedup before adopting it. Never changes your Default Context Length.")
+                }
+
                 if runner.activeModel?.id == model.id && (runner.status == .running || runner.status == .starting) {
                     Button(action: { runner.stopCurrent() }) {
                         Label("Stop Runner", systemImage: "stop.fill")
@@ -88,6 +174,8 @@ struct ModelInspectorView: View {
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(10)
+
+            autoTuneResultCard
 
             if runner.activeModel?.id == model.id, let phase = runner.startupPhase {
                 HStack(spacing: 12) {
