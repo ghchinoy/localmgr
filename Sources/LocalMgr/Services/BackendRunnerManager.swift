@@ -346,9 +346,13 @@ class BackendRunnerManager: ObservableObject {
     func stopCurrent() {
         var nextState = self.state.stop()
         if let process = currentProcess, process.isRunning {
-            process.terminate()
-            nextState = nextState.appendLog("\n--- Terminated runner process ---\n")
-            AppLog.info("Manually terminated runner '\(activeModel?.name ?? "unknown model")'", category: .runner)
+            nextState = nextState.appendLog("\n--- Terminating runner process with watchdog (5s timeout) ---\n")
+            AppLog.info("Terminating runner '\(activeModel?.name ?? "unknown model")' using watchdog...", category: .runner)
+            
+            Task {
+                let outcome = await SubprocessWatchdog.waitForExit(process: process, timeout: 5.0)
+                AppLog.info("Runner process watch complete: \(outcome)", category: .runner)
+            }
         }
         currentProcess = nil
         self.syncState(nextState)
