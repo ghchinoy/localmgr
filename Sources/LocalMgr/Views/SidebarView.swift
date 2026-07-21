@@ -201,14 +201,21 @@ struct SidebarView: View {
                         Circle()
                             .fill(st.isInstalled ? Color.green : Color.red)
                             .frame(width: 6, height: 6)
-                        Text(engine.rawValue)
-                            .font(.caption)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(engine.rawValue)
+                                .font(.caption)
+                            if st.isInstalled, let v = st.installedVersion {
+                                Text("v\(v)" + (st.updateAvailable ? " ⚠️" : ""))
+                                    .font(.system(size: 9))
+                                    .foregroundColor(st.updateAvailable ? .orange : .secondary)
+                            }
+                        }
                         Spacer()
                         Text(st.isInstalled ? "Ready" : "Missing")
                             .font(.caption2.bold())
                             .foregroundColor(st.isInstalled ? .green : .red)
                     }
-                    .help(st.installHint)
+                    .help(st.installHint + (st.updateAvailable ? " (Update Available: v\(st.latestVersion ?? ""))" : ""))
                 }
             }
         }

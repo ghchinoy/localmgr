@@ -8,6 +8,9 @@ struct EngineComponentStatus: Identifiable {
     var resolvedPath: String?
     var versionString: String?
     var installHint: String
+    var installedVersion: String?
+    var latestVersion: String?
+    var updateAvailable: Bool = false
 
     /// The individual `DiagnosticCheck`s backing this engine's readiness
     /// state -- currently a binary-discoverability check, with room to grow
@@ -31,6 +34,8 @@ class EngineReadinessService: ObservableObject {
 
     private var hfCheck: DiagnosticCheck?
     private weak var appSettings: AppSettings?
+    private var upstreamService: UpstreamEngineVersionService?
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
         refreshReadiness()
@@ -44,9 +49,24 @@ class EngineReadinessService: ObservableObject {
     /// immediately re-runs `refreshReadiness()` so the disabled-engine
     /// gating takes effect from the very first render rather than only
     /// after a manual refresh.
-    func configure(settings: AppSettings) {
+    func configure(settings: AppSettings, upstreamService: UpstreamEngineVersionService) {
         self.appSettings = settings
+        self.upstreamService = upstreamService
+        
+        upstreamService.$latestVersions
+            .sink { [weak self] latest in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    self.updateUpgradeAlerts(with: latest)
+                }
+            }
+            .store(in: &cancellables)
+            
         refreshReadiness()
+        
+        Task {
+            await upstreamService.checkLatestVersions()
+        }
     }
 
     func isReady(for engine: EngineType) -> Bool {
@@ -137,6 +157,61 @@ class EngineReadinessService: ObservableObject {
                 command: "uv tool install huggingface_hub"
             )
         }
+        
+        triggerVersionProbing()
+    }
+
+    func triggerVersionProbing() {
+        Task {
+            for (engine, status) in statuses {
+                guard let resolvedPath = status.resolvedPath else { continue }
+                
+                var version: String? = nil
+                switch engine {
+                case .llamaCpp:
+                    version = await LocalEngineVersionProber.probeLlamaCpp(resolvedPath: resolvedPath)
+                case .mlx:
+                    version = await LocalEngineVersionProber.probeMLX(resolvedPath: resolvedPath)
+                case .liteRT:
+                    version = await LocalEngineVersionProber.probeLiteRT(resolvedPath: resolvedPath)
+                default:
+                    break
+                }
+                
+                if let v = version {
+                    statuses[engine]?.installedVersion = v
+                    statuses[engine]?.versionString = "v\(v)"
+                    if let latest = upstreamService?.latestVersions {
+                        updateUpgradeAlerts(with: latest)
+                    }
+                }
+            }
+            objectWillChange.send()
+        }
+    }
+
+    func updateUpgradeAlerts(with latest: [EngineType: String]) {
+        for (engine, latestVer) in latest {
+            guard var status = statuses[engine],
+                  let installedVer = status.installedVersion else { continue }
+            
+            status.latestVersion = latestVer
+            if SemanticVersionComparator.isOutdated(installed: installedVer, latest: latestVer) {
+                status.updateAvailable = true
+                status.versionString = "v\(installedVer) (⚠️ Update Available: v\(latestVer))"
+                
+                if var check = status.checks.first {
+                    check.observed = "Found v\(installedVer) at \(status.resolvedPath ?? ""). A newer version is available: v\(latestVer)."
+                    check.fix = "Upgrade via: \(status.engineType == .llamaCpp ? "brew upgrade llama.cpp" : (status.engineType == .mlx ? "uv tool upgrade mlx-lm" : "uv tool upgrade ai-edge-litert"))"
+                    status.checks = [check]
+                }
+            } else {
+                status.updateAvailable = false
+                status.versionString = "v\(installedVer) (Latest)"
+            }
+            statuses[engine] = status
+        }
+        objectWillChange.send()
     }
 
     private func installHint(for engine: EngineType) -> String {
