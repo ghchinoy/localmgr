@@ -21,6 +21,23 @@ final class GGUFHeaderParserTests: XCTestCase {
         XCTAssertEqual(meta.embeddingLength, 1536, "Should parse embedding length from binary metadata")
     }
 
+    func testInspectGemma2() {
+        let home = NSHomeDirectory()
+        let path = home + "/projects/gemmma/my-custom-model.gguf"
+        let url = URL(fileURLWithPath: path)
+        
+        guard FileManager.default.fileExists(atPath: path) else {
+            print("SKIPPING testInspectGemma2 because local model was not found at \(path)")
+            return
+        }
+        
+        let meta = GGUFHeaderParser.inspect(url: url)
+        XCTAssertTrue(meta.isValidGGUF, "Should parse as valid GGUF")
+        XCTAssertEqual(meta.architectureMarker, "gemma2", "Should recognize architecture as gemma2")
+        XCTAssertEqual(meta.contextLength, 8192, "Should parse context length from binary metadata")
+        XCTAssertEqual(meta.layerCount, 26, "Should parse layer/block count from binary metadata")
+    }
+
     func testInspectNorthMiniCode() {
         let home = NSHomeDirectory()
         let path = home + "/projects/north-mini-code/models/gguf/North-Mini-Code-1.0-UD-Q4_K_M.gguf"

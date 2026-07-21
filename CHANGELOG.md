@@ -8,13 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.7.5] - 2026-07-20
+## [0.8.0] - 2026-07-20
 
-_Patch release (Build 16) fixing local API gateway model-parameter routing for MLX engines and correcting LiteRT-LM launch arguments._
+_Minor release (Build 17) introducing persistent model sorting, binary GGUF metadata parsing, and local API gateway corrections._
+
+### Added
+- **Persistent Model Sorting and Usage Metrics:** Added model list sorting by Name, Size, Recency (Last Used), and Frequency (Most Frequently Used) in `ModelListView`, with Row Stats/Metadata sub-labels. Features automatic UserDefaults tracking of launch recency and counts, persistent sort state, and 2 dedicated unit tests (`[localmgr-9hv]`).
 
 ### Fixed
-- **MLX Model Parameter Routing:** `LocalAPIGateway` previously forwarded the client-supplied `"model"` field verbatim. Because `mlx_lm.server` requires this parameter to exactly match its running model path (its internal identifier) rather than the friendly name, this caused OpenAI-API clients requesting completions to fail with a confusing `404 Hugging Face Hub lookup` error. The gateway now detects when the running engine is MLX and automatically rewrites the `"model"` body parameter to the runner's exact launched-model filesystem path before forwarding the request, matching llama-server's seamless single-model behavior (`[localmgr-8nn]`).
-- **LiteRT-LM Launch Integration:** `BackendRunnerManager` launched `litert-lm` using direct flags (like `--model_path`) which do not exist on the real `litert-lm` CLI. Because the CLI is subcommand-based and requires models to be pre-imported, launching any LiteRT model would always fail with an exit code 2 ("No such option"). The runner now executes a synchronous pre-launch `litert-lm import` step to register the model under a normalized model ID, and then correctly boots the server with the `serve` subcommand. The gateway also translates incoming `"model"` request body parameters to the registered model ID so requests are seamlessly routed (`[localmgr-190]`).
+- **Binary GGUF Metadata Parser:** Replaced fragile ASCII text scan with a robust binary key-value parser in `GGUFHeaderParser` to read `general.architecture` accurately, resolving "Unrecognized Architecture" errors for Gemma 4 (`gemma4`), Cohere 2 MoE (`cohere2moe`), and other model architectures. Correctly retrieves native max `context_length`, `block_count` (layers), `head_count_kv`, and `embedding_length` from GGUF binary headers directly (`[localmgr-b10]`, `[localmgr-14d]`).
+- **Expanded Compatibility Markers:** Expanded `verifiedGGUFArchitectureMarkers` in `CompatibilityTier` to add native verification/high-confidence support for `gemma4`, `cohere2moe`, `qwen2`, `qwen2moe`, `phi3`, `phi4`, `mistral`, `deepseek2`, `starcoder2`, `command-r`, `falcon`, `mpt`, `bert`, and `nomic-bert` (`[localmgr-a55]`).
+- **MLX Model Parameter Routing:** `LocalAPIGateway` now automatically rewrites the client-supplied `"model"` completions parameter to the runner's exact launched-model filesystem path (`activeModel.fileURL.path`) when executing an MLX engine, preventing confusing 404 Hugging Face Hub lookup errors (`[localmgr-8nn]`).
+- **LiteRT-LM Launch Integration:** Resolved invalid command arguments (like `--model_path`) on `BackendRunnerManager`'s LiteRT runner. The runner now executes a synchronous pre-launch `litert-lm import` step to register the model under a normalized model ID, and then boots the server with the correct `serve` subcommand. The gateway also maps completions `"model"` request body parameters to this registered model ID so queries are seamlessly routed (`[localmgr-190]`).
 
 ## [0.7.4] - 2026-07-20
 
@@ -183,7 +188,8 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ghchinoy/localmgr/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ghchinoy/localmgr/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ghchinoy/localmgr/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/ghchinoy/localmgr/compare/v0.5.0...v0.5.1
