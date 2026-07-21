@@ -244,20 +244,16 @@ class BackendRunnerManager: ObservableObject {
     /// (llama-server reports the `-m` path; mlx reports a repo id), so we do not
     /// attempt a strict model-identity match here -- a healthy OpenAI-compatible
     /// endpoint on the expected port is treated as adoptable. See localmgr-jhj.8.
+    /// Lightweight, best-effort probe: does a healthy engine already answer on
+    /// `port`? Delegates to the shared `EngineProbe.isHealthy` (localmgr-jhj.8/.9).
+    ///
+    /// Note: OpenAI-compatible engines (`llama-server`, `mlx_lm.server`) do not
+    /// reliably expose *which* model file backs the server via `/v1/models`
+    /// (llama-server reports the `-m` path; mlx reports a repo id), so we do not
+    /// attempt a strict model-identity match here -- a healthy OpenAI-compatible
+    /// endpoint on the expected port is treated as adoptable. See localmgr-jhj.8.
     private func probeExistingHealthyInstance(port: Int) async -> Bool {
-        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else { return false }
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.timeoutInterval = 1.5
-        do {
-            let (_, response) = try await URLSession.shared.data(for: req)
-            if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                return true
-            }
-        } catch {
-            // No listener / connection refused / timeout -> not adoptable.
-        }
-        return false
+        return await EngineProbe.isHealthy(port: port)
     }
 
     func startModel(_ model: ModelItem) {
@@ -463,19 +459,11 @@ class BackendRunnerManager: ObservableObject {
                         return
                     }
                     
-                    let url = URL(string: "http://127.0.0.1:\(targetPort)/v1/models")!
-                    var req = URLRequest(url: url)
-                    req.httpMethod = "GET"
-                    req.timeoutInterval = 1.0
-                    
-                    do {
-                        let (_, response) = try await URLSession.shared.data(for: req)
-                        if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
-                            ready = true
-                            break
-                        }
-                    } catch {
-                        // Ignore connection failures while starting up
+                    // Shared health probe (EngineProbe, localmgr-jhj.9); short
+                    // per-attempt timeout since we poll repeatedly during startup.
+                    if await EngineProbe.isHealthy(port: targetPort, timeout: 1.0) {
+                        ready = true
+                        break
                     }
                     
                     attempt += 1
@@ -577,29 +565,7 @@ class BackendRunnerManager: ObservableObject {
     }
 
     private func resolveBinaryPath(name: String) -> String? {
-        var namesToProbe = [name]
-        if name == "litert-lm" {
-            namesToProbe.append("litert-benchmark")
-        }
-
-        let fileManager = FileManager.default
-        for n in namesToProbe {
-            let searchPaths = [
-                "/opt/homebrew/bin/\(n)",
-                "/usr/local/bin/\(n)",
-                "/usr/bin/\(n)",
-                NSHomeDirectory() + "/Library/Application Support/LocalMgr/Engines/\(n)",
-                NSHomeDirectory() + "/.local/bin/\(n)",
-                NSHomeDirectory() + "/.cargo/bin/\(n)",
-                NSHomeDirectory() + "/.local/share/uv/tools/ai-edge-litert/bin/\(n)",
-                NSHomeDirectory() + "/.local/share/uv/tools/mlx-lm/bin/\(n)"
-            ]
-            for path in searchPaths {
-                if fileManager.fileExists(atPath: path) {
-                    return path
-                }
-            }
-        }
-        return nil
+        // Shared with EmpiricalTuner via EngineProbe (localmgr-jhj.9).
+        return EngineProbe.resolveBinaryPath(name: name)
     }
 }
