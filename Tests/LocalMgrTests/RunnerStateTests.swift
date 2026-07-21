@@ -143,4 +143,82 @@ final class RunnerStateTests: XCTestCase {
         XCTAssertEqual(RunnerState.Status.degraded("warning").legacyStatus, .running)
         XCTAssertEqual(RunnerState.Status.crashed(1).legacyStatus, .error)
     }
+
+    // MARK: - Edge cases and races (localmgr-jhj.3)
+
+    /// Starting a model while one is already running should re-point at the new
+    /// model, reset session telemetry, and return to `.starting` (last write wins).
+    func testStartWhileAlreadyRunning() {
+        let first = makeDummyModel()
+        var state = RunnerState().start(model: first).markRunning()
+        state = state.recordTelemetry(ttftMs: 100.0, durationMs: 1000.0, completionTokens: 25)
+        XCTAssertEqual(state.status, .running)
+        XCTAssertEqual(state.totalRequestsServed, 1)
+
+        let second = makeDummyModel()
+        let restarted = state.start(model: second)
+        XCTAssertEqual(restarted.status, .starting)
+        XCTAssertEqual(restarted.activeModel, second)
+        XCTAssertEqual(restarted.lastRunModelID, second.id)
+        // Session telemetry must reset for the new run.
+        XCTAssertEqual(restarted.totalRequestsServed, 0)
+        XCTAssertEqual(restarted.totalTokensProcessed, 0)
+        XCTAssertEqual(restarted.lastTTFTMilliseconds, 0.0)
+        XCTAssertEqual(restarted.lastTokensPerSecond, 0.0)
+    }
+
+    /// Stopping an already-stopped runner is idempotent (no crash, stays stopped).
+    func testStopWhileAlreadyStopped() {
+        let state = RunnerState()
+        XCTAssertEqual(state.status, .stopped)
+
+        let stopped = state.stop()
+        XCTAssertEqual(stopped.status, .stopped)
+        XCTAssertNil(stopped.activeModel)
+        XCTAssertNil(stopped.sessionStartTime)
+
+        // Double-stop remains stable.
+        let stoppedAgain = stopped.stop()
+        XCTAssertEqual(stoppedAgain.status, .stopped)
+    }
+
+    /// A crash (non-zero exit) while still in `.warming` must surface as `.crashed`
+    /// and clear the active model, not silently return to stopped.
+    func testCrashWhileWarming() {
+        let state = RunnerState().start(model: makeDummyModel()).markWarming()
+        XCTAssertEqual(state.status, .warming)
+
+        let crashed = state.terminate(exitCode: 139)
+        XCTAssertEqual(crashed.status, .crashed(139))
+        XCTAssertNil(crashed.activeModel)
+        XCTAssertNil(crashed.sessionStartTime)
+    }
+
+    /// Race: a health-check success (`markRunning`) arriving after a stop request
+    /// has moved the runner to `.stopping`. The transition should still apply
+    /// (the caller decides ordering), but activeModel is already cleared by stop.
+    func testHealthCheckSuccessDuringStopping() {
+        let state = RunnerState().start(model: makeDummyModel()).markRunning()
+        let stopping = state.markStopping()
+        XCTAssertEqual(stopping.status, .stopping)
+
+        // Late health-check success flips status to running as a pure transition.
+        let lateRunning = stopping.markRunning()
+        XCTAssertEqual(lateRunning.status, .running)
+    }
+
+    /// Idle-timeout eviction (stop) while the runner is still `.starting`
+    /// must abort cleanly back to stopped without leaving an active model.
+    func testIdleEvictionWhileStarting() {
+        let state = RunnerState().start(model: makeDummyModel())
+        XCTAssertEqual(state.status, .starting)
+        XCTAssertNotNil(state.activeModel)
+
+        let evicted = state.stop()
+        XCTAssertEqual(evicted.status, .stopped)
+        XCTAssertNil(evicted.activeModel)
+        XCTAssertNil(evicted.sessionStartTime)
+        // lastRunModelID is retained as history even after eviction.
+        XCTAssertNotNil(evicted.lastRunModelID)
+    }
 }
