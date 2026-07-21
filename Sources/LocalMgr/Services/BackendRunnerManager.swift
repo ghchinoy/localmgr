@@ -63,6 +63,17 @@ class BackendRunnerManager: ObservableObject {
     }
 
     private var currentProcess: Process?
+
+    /// True when the currently-tracked runner was *adopted* -- i.e. a healthy
+    /// engine was already listening on `port` at launch time (typically a
+    /// process spawned by a prior LocalMgr session that outlived it after a
+    /// crash/force-quit or dev rebuild) and we attached to it instead of
+    /// spawning a duplicate. Adopted instances have no `currentProcess`
+    /// (we do not own their lifecycle) and no captured stdout, so
+    /// `stopCurrent()` must not attempt to force-kill them via the watchdog
+    /// and log-tailing is unavailable for their history. See localmgr-jhj.8.
+    private var adoptedInstance: Bool = false
+
     private var pipeDrain: SubprocessPipeDrain?
     private weak var appSettings: AppSettings?
     private weak var catalogService: ModelCatalogService?
@@ -223,6 +234,32 @@ class BackendRunnerManager: ObservableObject {
         }
     }
 
+    /// Lightweight, best-effort probe: does a healthy engine already answer on
+    /// `port`? Sends the same `GET /v1/models` request used by the post-launch
+    /// health check and treats an HTTP 200 as "a healthy instance is already
+    /// listening". Any connection failure, non-200, or timeout returns `false`.
+    ///
+    /// Note: OpenAI-compatible engines (`llama-server`, `mlx_lm.server`) do not
+    /// reliably expose *which* model file backs the server via `/v1/models`
+    /// (llama-server reports the `-m` path; mlx reports a repo id), so we do not
+    /// attempt a strict model-identity match here -- a healthy OpenAI-compatible
+    /// endpoint on the expected port is treated as adoptable. See localmgr-jhj.8.
+    private func probeExistingHealthyInstance(port: Int) async -> Bool {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/v1/models") else { return false }
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.timeoutInterval = 1.5
+        do {
+            let (_, response) = try await URLSession.shared.data(for: req)
+            if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+                return true
+            }
+        } catch {
+            // No listener / connection refused / timeout -> not adoptable.
+        }
+        return false
+    }
+
     func startModel(_ model: ModelItem) {
         // Refuse to launch a model whose engine has been disabled in
         // Settings -> Hardware & Engines (Kokoro/gemma.cpp default off).
@@ -251,6 +288,55 @@ class BackendRunnerManager: ObservableObject {
         // Record the launch metrics for model tracking
         catalogService?.recordModelLaunch(model)
 
+        // Adoption path (localmgr-jhj.8): before spawning a new engine process,
+        // check whether a healthy OpenAI-compatible engine is already listening
+        // on the expected port -- e.g. a runner spawned by a previous LocalMgr
+        // session that outlived it (crash/force-quit/dev rebuild). If so, attach
+        // to it rather than spawning a duplicate that would fail to bind the port
+        // or leave an orphan. Only HTTP engines expose an adoptable health
+        // endpoint; gemma.cpp has no server mode and is always spawned fresh.
+        let supportsAdoption = (model.engineType == .llamaCpp || model.engineType == .mlx || model.engineType == .liteRT || model.engineType == .kokoro)
+        if supportsAdoption {
+            self.startupPhase = .waitingForHealth
+            self.syncState(self.state.appendLog("[Adoption]: Checking for an existing healthy engine on port \(self.port) before spawning...\n"))
+            let targetPort = self.port
+            let currentModelID = model.id
+            Task { [weak self] in
+                guard let self = self else { return }
+                let alreadyHealthy = await self.probeExistingHealthyInstance(port: targetPort)
+                await MainActor.run {
+                    // Bail if the user switched models while we were probing.
+                    guard self.state.activeModel?.id == currentModelID else { return }
+                    if alreadyHealthy {
+                        self.adoptExistingInstance(model: model, port: targetPort)
+                    } else {
+                        self.spawnModel(model)
+                    }
+                }
+            }
+            return
+        }
+
+        spawnModel(model)
+    }
+
+    /// Attaches to an already-running, healthy engine on `port` instead of
+    /// spawning a new process. No `currentProcess` is set (we do not own the
+    /// process lifecycle) and no stdout is captured, so historical logs from
+    /// before adoption are unavailable. See localmgr-jhj.8.
+    private func adoptExistingInstance(model: ModelItem, port: Int) {
+        self.adoptedInstance = true
+        self.currentProcess = nil
+        self.pipeDrain?.stop()
+        self.pipeDrain = nil
+        let msg = "[Adoption]: Found a healthy engine already listening on port \(port). Attaching to the existing instance instead of spawning a duplicate.\n[Adoption]: Note: this process was not started by this LocalMgr session -- its historical logs are unavailable and it will not be force-terminated on Stop.\n"
+        self.startupPhase = .ready
+        self.syncState(self.state.appendLog(msg).markRunning())
+        AppLog.info("Adopted existing healthy '\(model.name)' engine on port \(port) (no duplicate spawned)", category: .runner)
+    }
+
+    private func spawnModel(_ model: ModelItem) {
+        self.adoptedInstance = false
         let binaryName = model.engineType.defaultBinaryName
         guard let binaryPath = resolveBinaryPath(name: binaryName) else {
             self.syncState(self.state.markError(reason: "Could not find binary '\(binaryName)' in system PATH or App Support."))
@@ -421,7 +507,12 @@ class BackendRunnerManager: ObservableObject {
 
     func stopCurrent() {
         var nextState = self.state.stop()
-        if let process = currentProcess, process.isRunning {
+        if adoptedInstance {
+            // We attached to a process we did not spawn (localmgr-jhj.8); we do
+            // not own its lifecycle, so we detach rather than force-terminate it.
+            nextState = nextState.appendLog("\n--- Detaching from adopted engine (not force-terminated -- LocalMgr did not spawn it) ---\n")
+            AppLog.info("Detached from adopted runner '\(activeModel?.name ?? "unknown model")' without terminating it", category: .runner)
+        } else if let process = currentProcess, process.isRunning {
             nextState = nextState.appendLog("\n--- Terminating runner process with watchdog (5s timeout) ---\n")
             AppLog.info("Terminating runner '\(activeModel?.name ?? "unknown model")' using watchdog...", category: .runner)
             
@@ -430,6 +521,7 @@ class BackendRunnerManager: ObservableObject {
                 AppLog.info("Runner process watch complete: \(outcome)", category: .runner)
             }
         }
+        self.adoptedInstance = false
         self.startupPhase = nil
         self.currentProcess = nil
         self.pipeDrain?.stop()

@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-21
+
+_Minor release (Build 19) hardening engine orchestration: subprocess watchdog termination, bounded log capture, reactive startup phases, on-demand gateway wake-up detail, and adoption of existing healthy engines on relaunch._
+
+### Added
+- **Adopt Existing Healthy Engine on Relaunch:** Before spawning a new engine process, `BackendRunnerManager` now probes the expected port (`GET /v1/models`) for an already-healthy OpenAI-compatible engine — e.g. a runner spawned by a prior LocalMgr session that outlived it after a crash, force-quit, or dev rebuild — and attaches to it instead of spawning a duplicate that would fail to bind the port or leave an orphan. Adopted instances are not force-terminated on Stop (LocalMgr did not spawn them) and note that pre-adoption logs are unavailable. Verified live against a real orphaned `llama-server` on port 8080 (`[localmgr-jhj.8]`).
+- **Reactive Daemon Startup Phases:** `BackendRunnerManager` exposes a `DaemonStartupPhase` (launching → waiting-for-health → warming → ready/failed) driven by an async HTTP health-poll loop, surfaced as detailed UI status banners (`[localmgr-jhj.7]`).
+- **RunnerState Transition Test Coverage:** Added edge-case and race unit tests for `RunnerState` (start-while-running, stop-while-stopped, crash-while-warming, health-check-during-stopping, idle-eviction-while-starting); the suite now covers 17 pure transition scenarios (`[localmgr-jhj.3]`).
+
+### Fixed
+- **Subprocess Watchdog Termination:** Engine shutdown now escalates SIGTERM → SIGKILL via `SubprocessWatchdog` with a 5s timeout and process-family kill, preventing orphaned engine child processes (`[localmgr-jhj.4]`, `[localmgr-jhj.5]`).
+- **Bounded Log Capture:** Engine stdout/stderr is drained through `SubprocessPipeDrain` into a bounded `TailBuffer`, preventing unbounded log-memory growth on long-running or chatty engines (`[localmgr-jhj.6]`).
+- **Gateway Wake-Up Failure Detail:** On-demand model wake-up in `LocalAPIGateway` now consumes reactive startup-phase transitions — proxying immediately on readiness, failing fast with the exact error reason and log snapshot on early crash, and returning a configurable-deadline timeout instead of a fixed blind poll (`[localmgr-jhj.12]`).
+
 ## [0.8.1] - 2026-07-20
 
 _Patch release (Build 18) adding engine version detection, upgrade alerts, and personalized sidebar model lists._
