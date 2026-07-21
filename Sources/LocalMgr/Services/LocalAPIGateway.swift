@@ -394,8 +394,10 @@ class LocalAPIGateway: ObservableObject {
 
         var requestedModelName: String?
         var isStreaming = false
+        var jsonDict: [String: Any]?
         if let bodyData = bodyData,
            let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] {
+            jsonDict = json
             requestedModelName = json["model"] as? String
             isStreaming = (json["stream"] as? Bool) ?? false
         }
@@ -442,10 +444,20 @@ class LocalAPIGateway: ObservableObject {
             return
         }
 
+        var finalBodyData = bodyData
+        if let activeModel = runner.activeModel, activeModel.engineType == .mlx {
+            if var json = jsonDict {
+                json["model"] = activeModel.fileURL.path
+                if let reSerialized = try? JSONSerialization.data(withJSONObject: json, options: []) {
+                    finalBodyData = reSerialized
+                }
+            }
+        }
+
         let targetURL = URL(string: "http://127.0.0.1:\(runner.port)/v1/chat/completions")!
         var proxyReq = URLRequest(url: targetURL)
         proxyReq.httpMethod = "POST"
-        proxyReq.httpBody = bodyData
+        proxyReq.httpBody = finalBodyData
         proxyReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
         proxyReq.timeoutInterval = 1800.0
 
@@ -578,8 +590,21 @@ class LocalAPIGateway: ObservableObject {
                     errorBody.append(Data((line + "\n").utf8))
                 }
                 let bodyString = String(data: errorBody, encoding: .utf8) ?? ""
+                
+                var errorMessage = "The local engine rejected the streaming request."
+                if !bodyString.isEmpty {
+                    if let data = bodyString.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let errObj = json["error"] as? [String: Any],
+                       let upstreamMsg = errObj["message"] as? String {
+                        errorMessage = "The local engine rejected the streaming request: \(upstreamMsg)"
+                    } else if bodyString.count < 200 {
+                        errorMessage = "The local engine rejected the streaming request: \(bodyString.trimmingCharacters(in: .whitespacesAndNewlines))"
+                    }
+                }
+                
                 sendErrorResponse(connection: connection, status: statusCode, error: LocalMgrError(
-                    message: "The local engine rejected the streaming request.",
+                    message: errorMessage,
                     kind: "gateway-upstream-error",
                     detail: bodyString.isEmpty ? nil : bodyString
                 ))

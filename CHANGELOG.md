@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-07-20
+
+_Patch release (Build 16) fixing the local API gateway's model-parameter routing for MLX engines._
+
+### Fixed
+- **MLX Model Parameter Routing:** `LocalAPIGateway` previously forwarded the client-supplied `"model"` field verbatim. Because `mlx_lm.server` requires this parameter to exactly match its running model path (its internal identifier) rather than the friendly name, this caused OpenAI-API clients requesting completions to fail with a confusing `404 Hugging Face Hub lookup` error. The gateway now detects when the running engine is MLX and automatically rewrites the `"model"` body parameter to the runner's exact launched-model filesystem path before forwarding the request, matching llama-server's seamless single-model behavior (`[localmgr-8nn]`).
+
+## [0.7.4] - 2026-07-20
+
+_Patch release (Build 15) enhancing gateway error reporting for rejected streaming completions._
+
+### Fixed
+- **Descriptive Upstream Streaming Errors:** The API gateway previously returned a generic `"The local engine rejected the streaming request."` error message to streaming clients when the upstream engine (e.g. `llama-server`) rejected a request (such as for exceeding context length). It now parses the upstream error body JSON and propagates the specific error message (e.g., `exceed_context_size_error: request (167015 tokens) exceeds the available context size...`) back to the client (`[localmgr-s2x]`).
+
 ### Added
 - **Gateway Testing Assets:** new `testing/` directory with `opencode.jsonc` (a minimal OpenCode config, no MCP servers, isolating gateway checks from a daily-driver config's tool-schema payload size) and `smoke_test_gateway.sh` (standalone `curl`-based regression test covering the streaming, large-payload, and long-duration request handling fixed in `[localmgr-al0.1]`, `[localmgr-ae9]`, and `[localmgr-mtz]` — no OpenCode installation required). Referenced from `docs/USER_GUIDE.md`'s OpenCode section.
 
