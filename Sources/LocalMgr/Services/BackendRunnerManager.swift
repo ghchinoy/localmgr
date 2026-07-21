@@ -41,6 +41,7 @@ class BackendRunnerManager: ObservableObject {
     private var currentProcess: Process?
     private var pipe: Pipe?
     private weak var appSettings: AppSettings?
+    private weak var catalogService: ModelCatalogService?
     private var lastActivityDate: Date = Date()
     private var idleTimer: Timer?
 
@@ -79,8 +80,9 @@ class BackendRunnerManager: ObservableObject {
         }
     }
 
-    func configure(settings: AppSettings) {
+    func configure(settings: AppSettings, catalog: ModelCatalogService) {
         self.appSettings = settings
+        self.catalogService = catalog
     }
 
     /// Marks a moment of gateway activity for `checkIdleTimeout`'s
@@ -221,6 +223,9 @@ class BackendRunnerManager: ObservableObject {
         recordActivity()
         self.lastPingResponse = ""
         self.syncState(self.state.start(model: model))
+
+        // Record the launch metrics for model tracking
+        catalogService?.recordModelLaunch(model)
 
         let binaryName = model.engineType.defaultBinaryName
         guard let binaryPath = resolveBinaryPath(name: binaryName) else {

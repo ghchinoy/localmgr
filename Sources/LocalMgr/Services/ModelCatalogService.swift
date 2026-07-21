@@ -13,11 +13,22 @@ class ModelCatalogService: ObservableObject {
         var id: String { rawValue }
     }
 
+    enum ModelSortOption: String, CaseIterable, Identifiable {
+        case scanOrder = "Scan Order"
+        case name = "Alphabetical"
+        case size = "Size"
+        case lastUsed = "Last Run"
+        case mostFrequent = "Most Frequent"
+        
+        var id: String { rawValue }
+    }
+
     @Published var folders: [URL] = []
     @Published var models: [ModelItem] = []
     @Published var selectedModel: ModelItem?
     @Published var searchText: String = ""
     @Published var selectedFilter: ModelFilterCategory = .all
+    @Published var selectedSortOption: ModelSortOption = .scanOrder
 
     private let bookmarksKey = "LocalMgrFolderBookmarks"
 
@@ -34,6 +45,36 @@ class ModelCatalogService: ObservableObject {
         if !searchText.isEmpty {
             list = list.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
         }
+
+        switch selectedSortOption {
+        case .scanOrder:
+            break
+        case .name:
+            list.sort { $0.name.localizedCompare($1.name) == .orderedAscending }
+        case .size:
+            list.sort { $0.sizeBytes > $1.sizeBytes }
+        case .lastUsed:
+            let lastUsed = UserDefaults.standard.dictionary(forKey: "LocalMgrModelLastUsedDates") as? [String: Double] ?? [:]
+            list.sort {
+                let t1 = lastUsed[$0.fileURL.path] ?? 0
+                let t2 = lastUsed[$1.fileURL.path] ?? 0
+                if t1 != t2 {
+                    return t1 > t2
+                }
+                return $0.name.localizedCompare($1.name) == .orderedAscending
+            }
+        case .mostFrequent:
+            let counts = UserDefaults.standard.dictionary(forKey: "LocalMgrModelUsageCounts") as? [String: Int] ?? [:]
+            list.sort {
+                let c1 = counts[$0.fileURL.path] ?? 0
+                let c2 = counts[$1.fileURL.path] ?? 0
+                if c1 != c2 {
+                    return c1 > c2
+                }
+                return $0.name.localizedCompare($1.name) == .orderedAscending
+            }
+        }
+
         return list
     }
 
@@ -173,5 +214,37 @@ class ModelCatalogService: ObservableObject {
             }
         }
         return total
+    }
+
+    func lastUsedDescription(for model: ModelItem) -> String? {
+        let lastUsed = UserDefaults.standard.dictionary(forKey: "LocalMgrModelLastUsedDates") as? [String: Double] ?? [:]
+        guard let time = lastUsed[model.fileURL.path] else { return nil }
+        let date = Date(timeIntervalSince1970: time)
+        
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    func usageCount(for model: ModelItem) -> Int {
+        let counts = UserDefaults.standard.dictionary(forKey: "LocalMgrModelUsageCounts") as? [String: Int] ?? [:]
+        return counts[model.fileURL.path] ?? 0
+    }
+
+    func recordModelLaunch(_ model: ModelItem) {
+        let path = model.fileURL.path
+        let now = Date().timeIntervalSince1970
+        
+        var lastUsed = UserDefaults.standard.dictionary(forKey: "LocalMgrModelLastUsedDates") as? [String: Double] ?? [:]
+        var counts = UserDefaults.standard.dictionary(forKey: "LocalMgrModelUsageCounts") as? [String: Int] ?? [:]
+        
+        lastUsed[path] = now
+        counts[path] = (counts[path] ?? 0) + 1
+        
+        UserDefaults.standard.set(lastUsed, forKey: "LocalMgrModelLastUsedDates")
+        UserDefaults.standard.set(counts, forKey: "LocalMgrModelUsageCounts")
+        
+        // Notify UI of state changes
+        objectWillChange.send()
     }
 }

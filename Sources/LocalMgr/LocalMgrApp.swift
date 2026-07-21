@@ -30,7 +30,7 @@ struct LocalMgrApp: App {
                     appDelegate.runnerManager = runnerManager
                     appDelegate.catalogService = catalogService
                     appDelegate.appSettings = appSettings
-                    runnerManager.configure(settings: appSettings)
+                    runnerManager.configure(settings: appSettings, catalog: catalogService)
                     readinessService.configure(settings: appSettings)
                     monitorService.configure(runner: runnerManager)
                     gateway.configure(catalog: catalogService, runner: runnerManager, settings: appSettings, telemetry: telemetryStore)

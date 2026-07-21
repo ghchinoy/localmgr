@@ -45,12 +45,22 @@ struct ModelListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Filter Format", selection: $catalog.selectedFilter) {
-                ForEach(ModelCatalogService.ModelFilterCategory.allCases) { cat in
-                    Text(cat.rawValue).tag(cat)
+            HStack(spacing: 8) {
+                Picker("Filter Format", selection: $catalog.selectedFilter) {
+                    ForEach(ModelCatalogService.ModelFilterCategory.allCases) { cat in
+                        Text(cat.rawValue).tag(cat)
+                    }
                 }
+                .pickerStyle(.segmented)
+
+                Picker("Sort", selection: $catalog.selectedSortOption) {
+                    ForEach(ModelCatalogService.ModelSortOption.allCases) { opt in
+                        Text(opt.rawValue).tag(opt)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 140)
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color(NSColor.controlBackgroundColor))
@@ -99,6 +109,17 @@ struct ModelListView: View {
                                     .background(badgeState.color.opacity(0.15))
                                     .foregroundColor(badgeState.color)
                                     .cornerRadius(4)
+                            }
+                            
+                            if catalog.selectedSortOption == .lastUsed, let desc = catalog.lastUsedDescription(for: model) {
+                                Text("Last run: \(desc)")
+                                    .font(.caption2)
+                                    .foregroundColor(.accentColor)
+                            } else if catalog.selectedSortOption == .mostFrequent {
+                                let count = catalog.usageCount(for: model)
+                                Text("Run count: \(count) time\(count == 1 ? "" : "s")")
+                                    .font(.caption2)
+                                    .foregroundColor(.accentColor)
                             }
                         }
 
