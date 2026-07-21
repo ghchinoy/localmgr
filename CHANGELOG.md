@@ -10,10 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.7.5] - 2026-07-20
 
-_Patch release (Build 16) fixing the local API gateway's model-parameter routing for MLX engines._
+_Patch release (Build 16) fixing local API gateway model-parameter routing for MLX engines and correcting LiteRT-LM launch arguments._
 
 ### Fixed
 - **MLX Model Parameter Routing:** `LocalAPIGateway` previously forwarded the client-supplied `"model"` field verbatim. Because `mlx_lm.server` requires this parameter to exactly match its running model path (its internal identifier) rather than the friendly name, this caused OpenAI-API clients requesting completions to fail with a confusing `404 Hugging Face Hub lookup` error. The gateway now detects when the running engine is MLX and automatically rewrites the `"model"` body parameter to the runner's exact launched-model filesystem path before forwarding the request, matching llama-server's seamless single-model behavior (`[localmgr-8nn]`).
+- **LiteRT-LM Launch Integration:** `BackendRunnerManager` launched `litert-lm` using direct flags (like `--model_path`) which do not exist on the real `litert-lm` CLI. Because the CLI is subcommand-based and requires models to be pre-imported, launching any LiteRT model would always fail with an exit code 2 ("No such option"). The runner now executes a synchronous pre-launch `litert-lm import` step to register the model under a normalized model ID, and then correctly boots the server with the `serve` subcommand. The gateway also translates incoming `"model"` request body parameters to the registered model ID so requests are seamlessly routed (`[localmgr-190]`).
 
 ## [0.7.4] - 2026-07-20
 

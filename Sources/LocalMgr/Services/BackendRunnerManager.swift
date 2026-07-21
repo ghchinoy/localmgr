@@ -259,7 +259,26 @@ class BackendRunnerManager: ObservableObject {
         case .gemmaCpp:
             args = ["--tokenizer", model.fileURL.path, "--compressed_weights", model.fileURL.path]
         case .liteRT:
-            args = ["--model_path", model.fileURL.path, "--port", "\(port)", "--backend", "metal"]
+            let modelId = model.name.replacingOccurrences(of: " ", with: "-")
+            self.syncState(self.state.appendLog("[LiteRT]: Pre-importing \(model.fileURL.path) as model ID: \(modelId)...\n"))
+            
+            let importProcess = Process()
+            importProcess.executableURL = URL(fileURLWithPath: binaryPath)
+            importProcess.arguments = ["import", model.fileURL.path, modelId]
+            
+            do {
+                try importProcess.run()
+                importProcess.waitUntilExit()
+                if importProcess.terminationStatus == 0 {
+                    self.syncState(self.state.appendLog("[LiteRT]: Successfully imported \(modelId)\n"))
+                } else {
+                    self.syncState(self.state.appendLog("[LiteRT]: Warning: import process exited with status \(importProcess.terminationStatus)\n"))
+                }
+            } catch {
+                self.syncState(self.state.appendLog("[LiteRT]: Warning: Failed to execute import process: \(error.localizedDescription)\n"))
+            }
+            
+            args = ["serve", "--port", "\(port)", "--host", "127.0.0.1"]
         }
 
         process.arguments = args
@@ -278,7 +297,7 @@ class BackendRunnerManager: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     var nextState = self.state.appendLog(text)
-                    if nextState.status == .starting && (text.contains("HTTP server listening") || text.contains("running on http")) {
+                    if nextState.status == .starting && (text.contains("HTTP server listening") || text.contains("running on http") || text.contains("OpenAI-compatible API server")) {
                         nextState = nextState.markRunning()
                     }
                     self.syncState(nextState)
