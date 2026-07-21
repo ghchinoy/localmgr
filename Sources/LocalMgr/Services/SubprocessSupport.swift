@@ -31,9 +31,9 @@ struct TailBuffer: Sendable {
     
     mutating func append(_ text: String) {
         let newLines = text.components(separatedBy: .newlines)
-        for line in newLines {
+        for (i, line) in newLines.enumerated() {
             // Avoid adding blank lines at the end of split if they represent trailing newlines
-            if line.isEmpty && line == newLines.last { continue }
+            if line.isEmpty && i == newLines.count - 1 { continue }
             lines.append(line)
         }
         

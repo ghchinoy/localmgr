@@ -89,6 +89,39 @@ struct ModelInspectorView: View {
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(10)
 
+            if runner.activeModel?.id == model.id, let phase = runner.startupPhase {
+                HStack(spacing: 12) {
+                    switch phase {
+                    case .failed:
+                        Image(systemName: "exclamationmark.octagon.fill")
+                            .foregroundColor(.red)
+                            .font(.title3)
+                    case .ready:
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.title3)
+                    default:
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(phase.description)
+                            .font(.subheadline.bold())
+                        if case .failed = phase {
+                            Text("Check the Live Logs tab below for output details.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.12))
+                .cornerRadius(8)
+            }
+
             switch engineBadgeState {
             case .ready:
                 EmptyView()

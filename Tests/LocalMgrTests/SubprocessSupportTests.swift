@@ -25,10 +25,10 @@ final class SubprocessSupportTests: XCTestCase {
     
     func testTailBufferMultiLineSplit() {
         var buffer = TailBuffer(maxLines: 10)
-        buffer.append("a\nb\nc\nd\n")
+        buffer.append("a\n\nb\nc\n")
         
         XCTAssertEqual(buffer.lineCount, 4)
-        XCTAssertEqual(buffer.tail, "a\nb\nc\nd")
+        XCTAssertEqual(buffer.tail, "a\n\nb\nc")
     }
     
     func testTailBufferClear() {

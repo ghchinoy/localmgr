@@ -8,9 +8,33 @@ enum RunnerStatus: String {
     case error = "Error"
 }
 
+enum DaemonStartupPhase: Equatable {
+    case launching
+    case waitingForHealth
+    case warming
+    case ready
+    case failed(String)
+    
+    var description: String {
+        switch self {
+        case .launching:
+            return "Launching engine process..."
+        case .waitingForHealth:
+            return "Waiting for HTTP health check..."
+        case .warming:
+            return "Warming up model weights..."
+        case .ready:
+            return "Runner is ready!"
+        case .failed(let err):
+            return "Launch failed: \(err)"
+        }
+    }
+}
+
 @MainActor
 class BackendRunnerManager: ObservableObject {
     @Published var state: RunnerState = RunnerState()
+    @Published var startupPhase: DaemonStartupPhase? = nil
 
     @Published var activeModel: ModelItem?
     @Published var lastRunModelID: UUID?
@@ -39,7 +63,7 @@ class BackendRunnerManager: ObservableObject {
     }
 
     private var currentProcess: Process?
-    private var pipe: Pipe?
+    private var pipeDrain: SubprocessPipeDrain?
     private weak var appSettings: AppSettings?
     private weak var catalogService: ModelCatalogService?
     private var lastActivityDate: Date = Date()
@@ -291,24 +315,15 @@ class BackendRunnerManager: ObservableObject {
         env["GGML_METAL"] = "1"
         process.environment = env
 
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = outputPipe
-        self.pipe = outputPipe
-
-        outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            if let text = String(data: data, encoding: .utf8), !text.isEmpty {
-                Task { @MainActor [weak self] in
-                    guard let self = self else { return }
-                    var nextState = self.state.appendLog(text)
-                    if nextState.status == .starting && (text.contains("HTTP server listening") || text.contains("running on http") || text.contains("OpenAI-compatible API server")) {
-                        nextState = nextState.markRunning()
-                    }
-                    self.syncState(nextState)
-                }
+        let drain = SubprocessPipeDrain { [weak self] text in
+            guard let self = self else { return }
+            Task { @MainActor in
+                let nextState = self.state.appendLog(text)
+                self.syncState(nextState)
             }
         }
+        self.pipeDrain = drain
+        drain.attach(to: process)
 
         process.terminationHandler = { [weak self] proc in
             Task { @MainActor [weak self] in
@@ -319,25 +334,86 @@ class BackendRunnerManager: ObservableObject {
                 } else {
                     AppLog.info("Runner '\(model.name)' (\(binaryName)) exited cleanly", category: .runner)
                 }
+                
+                if self.state.status == .starting || self.state.status == .warming {
+                    self.startupPhase = .failed("Process exited with status \(code)")
+                } else {
+                    self.startupPhase = nil
+                }
+                
                 self.syncState(self.state.terminate(exitCode: code))
                 self.currentProcess = nil
+                self.pipeDrain?.stop()
+                self.pipeDrain = nil
             }
         }
+
+        self.startupPhase = .launching
 
         do {
             try process.run()
             self.currentProcess = process
             AppLog.info("Launched \(binaryName) for '\(model.name)' on port \(port)", category: .runner)
-            // Fallback status change if no specific string matched within 2 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                Task { @MainActor [weak self] in
+            
+            self.startupPhase = .waitingForHealth
+            self.syncState(self.state.markStarting())
+
+            let targetPort = self.port
+            let currentModelID = model.id
+            
+            Task { [weak self] in
+                let maxAttempts = 120
+                var attempt = 0
+                var ready = false
+                
+                while attempt < maxAttempts {
                     guard let self = self else { return }
-                    if self.state.status == .starting && process.isRunning {
+                    
+                    let isRunningAndUnchanged = await MainActor.run {
+                        return self.currentProcess?.isRunning == true && self.state.activeModel?.id == currentModelID
+                    }
+                    
+                    guard isRunningAndUnchanged else {
+                        return
+                    }
+                    
+                    let url = URL(string: "http://127.0.0.1:\(targetPort)/v1/models")!
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "GET"
+                    req.timeoutInterval = 1.0
+                    
+                    do {
+                        let (_, response) = try await URLSession.shared.data(for: req)
+                        if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200 {
+                            ready = true
+                            break
+                        }
+                    } catch {
+                        // Ignore connection failures while starting up
+                    }
+                    
+                    attempt += 1
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                }
+                
+                guard let self = self else { return }
+                await MainActor.run {
+                    guard self.state.activeModel?.id == currentModelID && self.currentProcess != nil else { return }
+                    
+                    if ready {
+                        self.startupPhase = .ready
                         self.syncState(self.state.markRunning())
+                        AppLog.info("Model '\(model.name)' is fully ready after health check validation on port \(targetPort).", category: .runner)
+                    } else {
+                        let lastLogs = self.pipeDrain?.snapshot ?? "No logs captured."
+                        self.startupPhase = .failed("Health check timed out on port \(targetPort)")
+                        self.syncState(self.state.markError(reason: "Health check timed out on port \(targetPort). Last logs:\n\(lastLogs)"))
+                        self.stopCurrent()
                     }
                 }
             }
         } catch {
+            self.startupPhase = .failed("Failed to launch process: \(error.localizedDescription)")
             self.syncState(self.state.markError(reason: "Failed to launch process: \(error.localizedDescription)"))
             AppLog.error("Failed to launch \(binaryName) for '\(model.name)': \(error.localizedDescription)", category: .runner)
         }
@@ -354,7 +430,10 @@ class BackendRunnerManager: ObservableObject {
                 AppLog.info("Runner process watch complete: \(outcome)", category: .runner)
             }
         }
-        currentProcess = nil
+        self.startupPhase = nil
+        self.currentProcess = nil
+        self.pipeDrain?.stop()
+        self.pipeDrain = nil
         self.syncState(nextState)
     }
 
