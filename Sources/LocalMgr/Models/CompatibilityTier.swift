@@ -70,7 +70,24 @@ enum ModelCompatibilityClassifier {
     /// metadata key / detectable via chat-template markers) that LocalMgr
     /// has specifically exercised with `llama-server`.
     private static let verifiedGGUFArchitectureMarkers: Set<String> = [
-        "gemma", "gemma2", "llama", "llama-3", "llama3"
+        // Gemma family
+        "gemma", "gemma2", "gemma4",
+        // Llama family
+        "llama", "llama-3", "llama3",
+        // Mistral family
+        "mistral",
+        // Cohere family
+        "command-r", "cohere2moe",
+        // Qwen family
+        "qwen2", "qwen2moe",
+        // Phi family
+        "phi3", "phi4",
+        // DeepSeek family
+        "deepseek2",
+        // StarCoder / coding
+        "starcoder2",
+        // Other confirmed
+        "falcon", "mpt", "bert", "nomic-bert"
     ]
 
     /// Classifies a scanned GGUF file using the metadata already extracted
