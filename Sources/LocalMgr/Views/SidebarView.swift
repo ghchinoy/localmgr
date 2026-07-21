@@ -7,6 +7,66 @@ struct SidebarView: View {
     @EnvironmentObject var gateway: LocalAPIGateway
     @EnvironmentObject var downloader: HubDownloaderService
 
+    private var recentlyUsedModels: [ModelItem] {
+        let lastUsed = UserDefaults.standard.dictionary(forKey: "LocalMgrModelLastUsedDates") as? [String: Double] ?? [:]
+        let activeModels = catalog.models.filter { lastUsed[$0.fileURL.path] != nil }
+        return activeModels.sorted {
+            let t1 = lastUsed[$0.fileURL.path] ?? 0
+            let t2 = lastUsed[$1.fileURL.path] ?? 0
+            return t1 > t2
+        }
+    }
+
+    private var frequentlyUsedModels: [ModelItem] {
+        let counts = UserDefaults.standard.dictionary(forKey: "LocalMgrModelUsageCounts") as? [String: Int] ?? [:]
+        let activeModels = catalog.models.filter { (counts[$0.fileURL.path] ?? 0) > 0 }
+        return activeModels.sorted {
+            let c1 = counts[$0.fileURL.path] ?? 0
+            let c2 = counts[$1.fileURL.path] ?? 0
+            return c1 > c2
+        }
+    }
+
+    private func sidebarModelRow(for model: ModelItem) -> some View {
+        Button(action: { catalog.selectedModel = model }) {
+            HStack(spacing: 8) {
+                Image(systemName: model.engineType.iconName)
+                    .font(.caption)
+                    .foregroundColor(catalog.selectedModel?.id == model.id ? .accentColor : .secondary)
+                    .frame(width: 16)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(model.name)
+                        .font(.caption.bold())
+                        .lineLimit(1)
+                    Text("\(model.format.rawValue) • \(model.sizeFormatted)")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                if runner.activeModel?.id == model.id && runner.status == .running {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func helpText(for status: EngineComponentStatus) -> String {
+        var text = status.installHint
+        if status.updateAvailable {
+            let latest = status.latestVersion ?? ""
+            text += " (Update Available: v\(latest))"
+        }
+        return text
+    }
+
     var body: some View {
         List {
             Section {
@@ -76,16 +136,17 @@ struct SidebarView: View {
                 .buttonStyle(.link)
             }
 
-            Section(header: Text("Curated Hugging Face Hub")) {
-                if downloader.isDownloading {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(downloader.statusMessage)
-                            .font(.caption2)
-                            .foregroundColor(.accentColor)
-                        ProgressView(value: downloader.progress)
+            if downloader.isDownloading || downloader.lastError != nil {
+                Section(header: Text("Model Downloads")) {
+                    if downloader.isDownloading {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(downloader.statusMessage)
+                                .font(.caption2)
+                                .foregroundColor(.accentColor)
+                            ProgressView(value: downloader.progress)
+                        }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
-                } else {
                     if let error = downloader.lastError {
                         HStack(alignment: .top, spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -103,30 +164,33 @@ struct SidebarView: View {
                         }
                         .padding(.vertical, 2)
                     }
-                    ForEach(downloader.curatedCatalog) { item in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.name)
-                                    .font(.caption)
-                                Text("\(item.format.rawValue) • \(item.sizeFormatted)")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Button(action: {
-                                if let targetFolder = catalog.folders.first {
-                                    downloader.downloadModel(item, targetFolder: targetFolder, catalog: catalog)
-                                } else {
-                                    catalog.promptAddFolder()
-                                }
-                            }) {
-                                Image(systemName: "arrow.down.circle.fill")
-                                    .foregroundColor(.blue)
-                            }
-                            .buttonStyle(.plain)
-                            .help("Download verified model with SHA-256 hash check")
-                        }
+                }
+            }
+
+            Section(header: Text("Recently Used")) {
+                let list = recentlyUsedModels
+                if list.isEmpty {
+                    Text("No models run yet")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
                         .padding(.vertical, 2)
+                } else {
+                    ForEach(list.prefix(3)) { model in
+                        sidebarModelRow(for: model)
+                    }
+                }
+            }
+
+            Section(header: Text("Frequently Used")) {
+                let list = frequentlyUsedModels
+                if list.isEmpty {
+                    Text("No models run yet")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 2)
+                } else {
+                    ForEach(list.prefix(3)) { model in
+                        sidebarModelRow(for: model)
                     }
                 }
             }

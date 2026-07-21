@@ -14,6 +14,7 @@ _Minor release (Build 17) introducing persistent model sorting, binary GGUF meta
 
 ### Added
 - **Persistent Model Sorting and Usage Metrics:** Added model list sorting by Name, Size, Recency (Last Used), and Frequency (Most Frequently Used) in `ModelListView`, with Row Stats/Metadata sub-labels. Features automatic UserDefaults tracking of launch recency and counts, persistent sort state, and 2 dedicated unit tests (`[localmgr-9hv]`).
+- **Sidebar Recently/Frequently Used Models:** Replaced the static, out-of-date Curated Hugging Face Hub list in the sidebar with dynamic, personalized sections for "Recently Used" and "Frequently Used" models. Selecting a model in either list immediately highlights it and updates the main inspector view on the right for seamless navigation (`[localmgr-dr7]`).
 
 ### Fixed
 - **Binary GGUF Metadata Parser:** Replaced fragile ASCII text scan with a robust binary key-value parser in `GGUFHeaderParser` to read `general.architecture` accurately, resolving "Unrecognized Architecture" errors for Gemma 4 (`gemma4`), Cohere 2 MoE (`cohere2moe`), and other model architectures. Correctly retrieves native max `context_length`, `block_count` (layers), `head_count_kv`, and `embedding_length` from GGUF binary headers directly (`[localmgr-b10]`, `[localmgr-14d]`).
