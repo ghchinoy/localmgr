@@ -416,9 +416,40 @@ class LocalAPIGateway: ObservableObject {
                 updateLastLog("On-demand wake: starting \(matched.name)...")
                 runner.startModel(matched)
                 
-                for _ in 0..<30 {
-                    if runner.status == .running { break }
-                    try? await Task.sleep(nanoseconds: 500_000_000)
+                let wakeDeadline = Date().addingTimeInterval(35.0)
+                var wakeSuccess = false
+                var wakeErrorReason: String? = nil
+                
+                while Date() < wakeDeadline {
+                    if let phase = runner.startupPhase {
+                        if case .ready = phase {
+                            wakeSuccess = true
+                            break
+                        } else if case .failed(let reason) = phase {
+                            wakeErrorReason = reason
+                            break
+                        }
+                    } else if runner.status == .running {
+                        wakeSuccess = true
+                        break
+                    }
+                    
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                }
+                
+                if !wakeSuccess {
+                    if let reason = wakeErrorReason {
+                        sendErrorResponse(connection: connection, status: 503, error: LocalMgrError(
+                            message: "On-demand model wake-up failed: \(reason)",
+                            kind: "gateway-wake-failed"
+                        ))
+                    } else {
+                        sendErrorResponse(connection: connection, status: 503, error: LocalMgrError(
+                            message: "On-demand model wake-up timed out.",
+                            kind: "gateway-wake-timeout"
+                        ))
+                    }
+                    return
                 }
             } else if runner.status == .running {
                 // If model name not found in catalog, but runner is running, fail fast if names conflict unless "default" or "local"
