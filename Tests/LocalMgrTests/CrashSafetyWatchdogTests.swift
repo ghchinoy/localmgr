@@ -136,4 +136,26 @@ final class CrashSafetyWatchdogTests: XCTestCase {
         XCTAssertNil(CrashSafetyWatchdog.readMarker())
         proc.waitUntilExit()
     }
+
+    // MARK: - Layer-3 sidecar shell program
+
+    func testSidecarProgramReferencesPIDsAndMarker() {
+        let prog = CrashSafetyWatchdog.sidecarShellProgram(
+            ownerPID: 111, enginePID: 222, markerPath: "/tmp/marker.json", pollSeconds: 2, maxIterations: 10
+        )
+        XCTAssertTrue(prog.contains("kill -0 111"), "must poll the owner PID")
+        XCTAssertTrue(prog.contains("kill -TERM 222"), "must SIGTERM the engine PID")
+        XCTAssertTrue(prog.contains("kill -KILL 222"), "must escalate to SIGKILL")
+        XCTAssertTrue(prog.contains("rm -f \"/tmp/marker.json\""), "must clear the marker")
+        XCTAssertTrue(prog.contains("sleep 2"), "must use the poll interval")
+    }
+
+    func testSidecarProgramHasBoundedSelfDestructCeiling() {
+        let prog = CrashSafetyWatchdog.sidecarShellProgram(
+            ownerPID: 1, enginePID: 2, markerPath: "/tmp/m.json", pollSeconds: 2, maxIterations: 43200
+        )
+        // The loop must be bounded (never `while true`) as a leaked-sidecar safety net.
+        XCTAssertTrue(prog.contains("-lt 43200"), "must bound iterations for self-destruct")
+        XCTAssertFalse(prog.contains("while true"), "must not loop unconditionally forever")
+    }
 }

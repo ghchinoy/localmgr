@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-07-21
+
+_Patch release (Build 22) completing the 3-layer engine crash-safety pattern: signal handlers and a detached sidecar watchdog that survives even `kill -9`._
+
+### Fixed
+- **Signal-Handler Engine Cleanup (Layer 2):** LocalMgr now installs `SIGINT`/`SIGTERM`/`SIGHUP` handlers (via `DispatchSourceSignal`) that synchronously terminate the LocalMgr-owned engine subprocess and clear its crash-safety marker before re-raising the signal with default disposition, so a `kill <pid>` (not `-9`), a Ctrl-C from a dev terminal, or a closed controlling terminal no longer orphans the engine. Complements the existing clean-quit hook. Verified live: `kill -TERM` on LocalMgr terminated a real `llama-server` before the app exited (`[localmgr-853.7]`).
+- **Detached Sidecar Watchdog (Layer 3):** On each engine launch LocalMgr now spawns a small detached `/bin/sh` sidecar (own session, closed stdio) that polls LocalMgr's PID every ~2s; the moment LocalMgr disappears — including an uncatchable `kill -9` or a hard crash — the sidecar reaps the recorded engine PID (SIGTERM→SIGKILL) and deletes the marker, then exits. It carries a 24-hour self-destruct ceiling as a leaked-process safety net and is torn down on clean engine stop so a normally-stopped engine is never reaped. Verified live: `kill -9` of the owning process with no relaunch resulted in the sidecar independently terminating the orphaned engine within its poll interval (`[localmgr-853.8]`).
+
 ## [0.10.1] - 2026-07-21
 
 _Patch release (Build 21) adding crash-safety cleanup for engine subprocesses orphaned by a force-quit or crash of LocalMgr itself._

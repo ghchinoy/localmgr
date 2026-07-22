@@ -427,7 +427,9 @@ class BackendRunnerManager: ObservableObject {
                 self.currentProcess = nil
                 self.pipeDrain?.stop()
                 self.pipeDrain = nil
-                // The engine process is gone; its crash-safety marker is stale.
+                // The engine process is gone; its crash-safety marker is stale
+                // and the Layer-3 sidecar has nothing left to guard.
+                CrashSafetyWatchdog.terminateSidecar()
                 CrashSafetyWatchdog.clearMarker()
             }
         }
@@ -442,15 +444,24 @@ class BackendRunnerManager: ObservableObject {
             // Record a crash-safety marker (localmgr-853.6) so that if LocalMgr
             // itself is force-quit/crashes while this engine runs, the next
             // launch can detect and reap the orphaned engine PID.
+            let ownerPID = ProcessInfo.processInfo.processIdentifier
+            let enginePID = process.processIdentifier
             CrashSafetyWatchdog.writeMarker(CrashSafetyWatchdog.Marker(
-                localMgrPID: ProcessInfo.processInfo.processIdentifier,
-                enginePID: process.processIdentifier,
+                localMgrPID: ownerPID,
+                enginePID: enginePID,
                 engineName: binaryName,
                 modelName: model.name,
                 modelPath: model.fileURL.path,
                 port: self.port,
                 startedAt: Date()
             ))
+            // Crash-safety Layer 3 (localmgr-853.8): launch a detached sidecar
+            // that reaps this engine if LocalMgr dies uncatchably (kill -9).
+            CrashSafetyWatchdog.launchSidecar(
+                ownerPID: ownerPID,
+                enginePID: enginePID,
+                markerPath: CrashSafetyWatchdog.markerPathForSidecar
+            )
             
             self.startupPhase = .waitingForHealth
             self.syncState(self.state.markStarting())
@@ -530,7 +541,9 @@ class BackendRunnerManager: ObservableObject {
         self.pipeDrain?.stop()
         self.pipeDrain = nil
         // Engine is no longer LocalMgr-owned; drop its crash-safety marker so it
-        // is not mistaken for an orphan on the next launch (localmgr-853.6).
+        // is not mistaken for an orphan on the next launch (localmgr-853.6), and
+        // stop the Layer-3 sidecar so a cleanly-stopped engine is never reaped.
+        CrashSafetyWatchdog.terminateSidecar()
         CrashSafetyWatchdog.clearMarker()
         self.syncState(nextState)
     }

@@ -189,6 +189,93 @@ enum CrashSafetyWatchdog {
         return marker.enginePID
     }
 
+    // MARK: - Layer 3: detached sidecar watchdog
+
+    /// The currently-running detached sidecar process, if any. Retained so it
+    /// can be terminated on a clean engine stop (a normally-stopped engine must
+    /// not be reaped by a lingering sidecar).
+    private nonisolated(unsafe) static var sidecarProcess: Process?
+
+    /// Builds the POSIX shell program the detached sidecar runs. It polls the
+    /// owning LocalMgr PID every `pollSeconds`; the moment that PID disappears
+    /// (which includes `kill -9`, uncatchable by Layer 2), it reaps the recorded
+    /// engine PID (SIGTERM, brief wait, then SIGKILL), deletes the marker file,
+    /// and exits. A `maxIterations` ceiling guarantees the sidecar can never run
+    /// forever even if something goes wrong (self-destruct safety net).
+    ///
+    /// Exposed (not private) so it is unit-testable in isolation.
+    static func sidecarShellProgram(
+        ownerPID: Int32,
+        enginePID: Int32,
+        markerPath: String,
+        pollSeconds: Int = 2,
+        maxIterations: Int = 43200  // 43200 * 2s = 24h ceiling
+    ) -> String {
+        // Pure POSIX sh; `kill -0` probes liveness, `rm -f` is idempotent.
+        return """
+        i=0
+        while [ $i -lt \(maxIterations) ]; do
+          if ! kill -0 \(ownerPID) 2>/dev/null; then
+            if kill -0 \(enginePID) 2>/dev/null; then
+              kill -TERM \(enginePID) 2>/dev/null
+              j=0
+              while [ $j -lt 50 ]; do
+                kill -0 \(enginePID) 2>/dev/null || break
+                sleep 0.1
+                j=$((j+1))
+              done
+              kill -0 \(enginePID) 2>/dev/null && kill -KILL \(enginePID) 2>/dev/null
+            fi
+            rm -f "\(markerPath)"
+            exit 0
+          fi
+          sleep \(pollSeconds)
+          i=$((i+1))
+        done
+        exit 0
+        """
+    }
+
+    /// Launches the detached Layer-3 sidecar for a freshly-spawned engine.
+    /// Runs `/bin/sh -c <program>` in its own session (`processGroup`/new
+    /// session semantics) with stdio detached, so it survives LocalMgr's death
+    /// (including `kill -9`) and keeps no ties to the parent. Best-effort:
+    /// failure to launch only forfeits Layer-3 coverage, never the engine start.
+    static func launchSidecar(ownerPID: Int32, enginePID: Int32, markerPath: String) {
+        // Replace any prior sidecar (single-runner invariant).
+        terminateSidecar()
+
+        let program = sidecarShellProgram(ownerPID: ownerPID, enginePID: enginePID, markerPath: markerPath)
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", program]
+        // Detach stdio so the sidecar holds no pipes to the parent.
+        proc.standardInput = FileHandle.nullDevice
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+
+        do {
+            try proc.run()
+            sidecarProcess = proc
+        } catch {
+            sidecarProcess = nil
+        }
+    }
+
+    /// The path the sidecar should watch/delete -- the same single marker file.
+    static var markerPathForSidecar: String {
+        markerFileURL.path
+    }
+
+    /// Terminates the running sidecar (if any) -- called on a clean engine stop
+    /// so a normally-stopped engine is never reaped by a lingering watcher.
+    static func terminateSidecar() {
+        if let proc = sidecarProcess, proc.isRunning {
+            proc.terminate()
+        }
+        sidecarProcess = nil
+    }
+
     // MARK: - Layer 2: signal handlers
 
     /// Retained signal sources; kept alive for the process lifetime once
