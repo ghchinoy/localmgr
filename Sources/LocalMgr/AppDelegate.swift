@@ -23,6 +23,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 AppLog.info("Crash-safety: cleared stale marker for '\(m.engineName)' (model '\(m.modelName)'); its process was already gone", category: .runner)
             }
         }
+
+        // Crash-safety Layer 2 (localmgr-853.7): catch SIGINT/SIGTERM/SIGHUP
+        // (e.g. `kill <pid>`, Ctrl-C from a dev terminal, or closing the
+        // controlling terminal) and terminate the LocalMgr-owned engine + clear
+        // its marker before the process exits. SIGKILL cannot be caught -- the
+        // Layer-3 sidecar (localmgr-853.8) covers that gap.
+        CrashSafetyWatchdog.installSignalHandlers { sig, reapedPID in
+            if let pid = reapedPID {
+                AppLog.fault("Crash-safety: received signal \(sig); terminated engine PID \(pid) and cleared marker before exit", category: .runner)
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

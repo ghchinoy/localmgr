@@ -89,4 +89,51 @@ final class CrashSafetyWatchdogTests: XCTestCase {
         CrashSafetyWatchdog.clearMarker()
         XCTAssertNil(CrashSafetyWatchdog.readMarker())
     }
+
+    // MARK: - Synchronous reap (Layer-2 signal path)
+
+    func testReapWithNoMarkerReturnsNil() {
+        CrashSafetyWatchdog.clearMarker()
+        XCTAssertNil(CrashSafetyWatchdog.reapCurrentEngineSynchronously())
+    }
+
+    /// A marker whose engine PID is already dead should just clear the marker
+    /// and report nothing reaped -- no signal sent to a non-existent PID.
+    func testReapWithDeadEnginePIDClearsMarkerReturnsNil() {
+        // Use a PID that is essentially guaranteed not to exist.
+        let marker = makeMarker(localMgrPID: ProcessInfo.processInfo.processIdentifier, enginePID: 2_000_000_000)
+        XCTAssertTrue(CrashSafetyWatchdog.writeMarker(marker))
+        let reaped = CrashSafetyWatchdog.reapCurrentEngineSynchronously()
+        XCTAssertNil(reaped)
+        // Marker must be cleared regardless.
+        XCTAssertNil(CrashSafetyWatchdog.readMarker())
+    }
+
+    /// End-to-end synchronous reap against a REAL child process: spawn a
+    /// long-sleeping /bin/sleep, record it as the engine, and confirm the
+    /// synchronous reaper terminates it and clears the marker.
+    func testReapTerminatesRealProcess() throws {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        proc.arguments = ["600"]
+        try proc.run()
+        let enginePID = proc.processIdentifier
+        XCTAssertTrue(CrashSafetyWatchdog.isProcessAlive(pid: enginePID))
+
+        let marker = makeMarker(localMgrPID: ProcessInfo.processInfo.processIdentifier, enginePID: enginePID)
+        XCTAssertTrue(CrashSafetyWatchdog.writeMarker(marker))
+
+        let reaped = CrashSafetyWatchdog.reapCurrentEngineSynchronously()
+        XCTAssertEqual(reaped, enginePID)
+
+        // Give the OS a beat to fully reap, then confirm it is gone.
+        var stillAlive = true
+        for _ in 0..<50 {
+            if !CrashSafetyWatchdog.isProcessAlive(pid: enginePID) { stillAlive = false; break }
+            usleep(10_000)
+        }
+        XCTAssertFalse(stillAlive, "sleep process should have been terminated")
+        XCTAssertNil(CrashSafetyWatchdog.readMarker())
+        proc.waitUntilExit()
+    }
 }

@@ -164,4 +164,71 @@ enum CrashSafetyWatchdog {
             return .terminatedOrphan(m)
         }
     }
+
+    /// Synchronously terminates the engine recorded in the current marker (if
+    /// any) and clears the marker. Used by the Layer-2 signal handlers
+    /// (`installSignalHandlers`), where the process is about to die and there is
+    /// no time for an async escalation loop: we send SIGTERM, spin a brief
+    /// bounded busy-wait, then SIGKILL if still alive. Safe to call when no
+    /// marker exists (no-op). Returns the PID that was signaled, if any.
+    @discardableResult
+    static func reapCurrentEngineSynchronously() -> Int32? {
+        guard let marker = readMarker() else { return nil }
+        defer { clearMarker() }
+        guard isProcessAlive(pid: marker.enginePID) else { return nil }
+        kill(marker.enginePID, SIGTERM)
+        // Brief bounded wait (~500ms) using usleep -- we are on a shutdown path
+        // and cannot rely on the run loop / Swift concurrency still servicing us.
+        for _ in 0..<50 {
+            if !isProcessAlive(pid: marker.enginePID) { break }
+            usleep(10_000)
+        }
+        if isProcessAlive(pid: marker.enginePID) {
+            kill(marker.enginePID, SIGKILL)
+        }
+        return marker.enginePID
+    }
+
+    // MARK: - Layer 2: signal handlers
+
+    /// Retained signal sources; kept alive for the process lifetime once
+    /// installed. Never mutated after `installSignalHandlers` returns.
+    private nonisolated(unsafe) static var signalSources: [DispatchSourceSignal] = []
+
+    /// Installs Layer-2 crash-safety handlers for SIGINT/SIGTERM/SIGHUP.
+    ///
+    /// These cover terminations that are NOT clean quits but ARE catchable:
+    /// `kill <pid>` (SIGTERM), Ctrl-C in a dev terminal (SIGINT), and closing a
+    /// controlling terminal LocalMgr was launched from (SIGHUP). On receipt we
+    /// synchronously terminate the LocalMgr-owned engine and clear the marker,
+    /// then re-raise the signal with the default disposition so the process
+    /// still terminates exactly as it normally would.
+    ///
+    /// This complements (does not replace) `applicationWillTerminate` (clean
+    /// quit, Layer 0) and the launch-time orphan check + detached sidecar
+    /// (Layers 1/3). `SIGKILL` cannot be caught by design -- that gap is what
+    /// the Layer-3 sidecar (`localmgr-853.8`) exists to close.
+    ///
+    /// We use `DispatchSourceSignal` rather than a raw C `signal()` handler so
+    /// the cleanup work runs in a normal Swift context (async-signal-safety is
+    /// not a concern), and we must call `signal(sig, SIG_IGN)` first so the
+    /// default disposition does not kill us before the source fires.
+    static func installSignalHandlers(onCleanup: (@Sendable (Int32, Int32?) -> Void)? = nil) {
+        let signalsToHandle: [Int32] = [SIGINT, SIGTERM, SIGHUP]
+        for sig in signalsToHandle {
+            // Ignore the default disposition so the dispatch source can handle it.
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+            source.setEventHandler {
+                let reapedPID = reapCurrentEngineSynchronously()
+                onCleanup?(sig, reapedPID)
+                // Restore default disposition and re-raise so the process
+                // terminates normally with the expected signal semantics.
+                signal(sig, SIG_DFL)
+                raise(sig)
+            }
+            source.resume()
+            signalSources.append(source)
+        }
+    }
 }
