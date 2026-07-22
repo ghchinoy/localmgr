@@ -8,6 +8,37 @@ struct OpsDashboardView: View {
     @State private var isRunningBenchmark: Bool = false
     @State private var benchmarkStatus: String = ""
 
+    // Anti-flicker: hold last-good value state (localmgr-853.5).
+    @State private var heldRequests: String = "0"
+    @State private var heldTokens: String = "0"
+    @State private var heldSpeed: String = "0.0 tok/s"
+    @State private var heldKV: String = "0.0%"
+
+    private func updateHeldValues(modelChanged: Bool = false) {
+        let totalReqs = store.records.count
+        if totalReqs == 0 || modelChanged {
+            // Genuine cold start or explicit reset (Clear History or Model Switch)
+            heldRequests = "0"
+            heldTokens = "0"
+            heldSpeed = "0.0 tok/s"
+            heldKV = "0.0%"
+            return
+        }
+
+        let totalTokens = store.records.reduce(0) { $0 + $1.promptTokens + $1.completionTokens }
+        let validTPS = store.records.filter { $0.tps > 0 }
+        let globalTPS = validTPS.isEmpty ? 0.0 : validTPS.reduce(0.0) { $0 + $1.tps } / Double(validTPS.count)
+        let totalPrompt = store.records.reduce(0) { $0 + max(1, $1.promptTokens) }
+        let totalCached = store.records.reduce(0) { $0 + $1.cachedTokens }
+        let globalKV = Double(totalCached) / Double(max(1, totalPrompt)) * 100.0
+
+        // Hold last-good value: only overwrite if the new measurement is non-empty/non-zero
+        if totalReqs > 0 { heldRequests = "\(totalReqs)" }
+        if totalTokens > 0 { heldTokens = "\(totalTokens)" }
+        if globalTPS > 0 { heldSpeed = String(format: "%.1f tok/s", globalTPS) }
+        if globalKV > 0 { heldKV = String(format: "%.1f%%", globalKV) }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -58,21 +89,14 @@ struct OpsDashboardView: View {
                     .cornerRadius(6)
                 }
 
-                // Global KPI Cards
-                let totalReqs = store.records.count
-                let totalTokens = store.records.reduce(0) { $0 + $1.promptTokens + $1.completionTokens }
-                let validTPS = store.records.filter { $0.tps > 0 }
-                let globalTPS = validTPS.isEmpty ? 0.0 : validTPS.reduce(0.0) { $0 + $1.tps } / Double(validTPS.count)
-                let totalPrompt = store.records.reduce(0) { $0 + max(1, $1.promptTokens) }
-                let totalCached = store.records.reduce(0) { $0 + $1.cachedTokens }
-                let globalKV = Double(totalCached) / Double(max(1, totalPrompt)) * 100.0
+                // Global KPI Cards (held last-good value state, localmgr-853.5)
                 let thermal = ProcessInfo.processInfo.thermalState
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                    MetricCard(title: "Lifetime Requests", value: "\(totalReqs)", icon: "network", color: .blue)
-                    MetricCard(title: "Lifetime Tokens", value: "\(totalTokens)", icon: "number.square", color: .purple)
-                    MetricCard(title: "Avg Generation Speed", value: String(format: "%.1f tok/s", globalTPS), icon: "bolt.fill", color: .orange)
-                    MetricCard(title: "KV Cache Hit Rate", value: String(format: "%.1f%%", globalKV), icon: "memorychip", color: .green)
+                    MetricCard(title: "Lifetime Requests", value: heldRequests, icon: "network", color: .blue)
+                    MetricCard(title: "Lifetime Tokens", value: heldTokens, icon: "number.square", color: .purple)
+                    MetricCard(title: "Avg Generation Speed", value: heldSpeed, icon: "bolt.fill", color: .orange)
+                    MetricCard(title: "KV Cache Hit Rate", value: heldKV, icon: "memorychip", color: .green)
                 }
 
                 // Host Health Card
@@ -152,6 +176,15 @@ struct OpsDashboardView: View {
                 }
             }
             .padding()
+        }
+        .onAppear {
+            updateHeldValues()
+        }
+        .onChange(of: store.records) { _ in
+            updateHeldValues()
+        }
+        .onChange(of: catalog.selectedModel) { _ in
+            updateHeldValues(modelChanged: true)
         }
     }
 

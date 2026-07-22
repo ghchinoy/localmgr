@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-struct TelemetryRecord: Codable, Identifiable {
+struct TelemetryRecord: Codable, Identifiable, Equatable {
     var id: UUID = UUID()
     var timestamp: Date
     var modelName: String

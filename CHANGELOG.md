@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-07-21
+
+_Patch release (Build 23) implementing 'held last-good value' anti-flicker pattern for OpsDashboardView telemetry tiles._
+
+### Fixed
+- **Dashboard Telemetry Anti-Flicker:** `OpsDashboardView`'s KPI tiles (Lifetime Requests, Lifetime Tokens, Avg Generation Speed, KV Cache Hit Rate) are now backed by a "held last-good value" state wrapper. This preserves the last valid non-empty/non-zero measurement across payload gaps or recomputation updates rather than displaying raw zero values or placeholders. An explicit zero/placeholder state is reserved only for genuine cold start (zero cumulative records) or explicit resets (like switching models). Conforms to MTPLX's anti-flicker design patterns (`[localmgr-853.5]`).
+
 ## [0.10.2] - 2026-07-21
 
 _Patch release (Build 22) completing the 3-layer engine crash-safety pattern: signal handlers and a detached sidecar watchdog that survives even `kill -9`._
