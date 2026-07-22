@@ -80,6 +80,8 @@ A few things specific to using LocalMgr as an agent-harness backend rather than 
 
 For a minimal test config (no other providers/MCP servers, useful for isolating gateway issues from your daily-driver config) and a standalone `curl`-based smoke test covering the gateway's streaming, large-payload, and long-duration request handling, see [`testing/opencode.jsonc`](../testing/opencode.jsonc) and [`testing/smoke_test_gateway.sh`](../testing/smoke_test_gateway.sh) in this repo.
 
+For guidance on running small local models with tool-heavy agent clients — including why MCP tool schemas cause context-window rejections, how to structure a minimal config, how to use `rtk` to suppress verbose command output, and a sample project-level `AGENTS.md` — see [**Agent Client Best Practices**](AGENT_CLIENT_GUIDE.md).
+
 ---
 
 ### Deep Dive: Querying Thinking & Reasoning Models (`reasoning_content`)

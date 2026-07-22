@@ -140,6 +140,7 @@ Open the **Ops Dashboard** (`Cmd+Shift+O`) or inspect the sidebar telemetry head
 
 For deep dives into internal design decisions, routing architectures, and user workflows, explore the project documentation:
 - [User & Persona Guide](docs/USER_GUIDE.md): Practical step-by-step walkthroughs, reasoning model cURL recipes, and persona tutorials.
+- [Agent Client Best Practices](docs/AGENT_CLIENT_GUIDE.md): How to use LocalMgr's gateway with coding agents (OpenCode, Claude Code, etc.) — context window limits, minimal configs, `rtk` output filtering, and a sample project `AGENTS.md`.
 - [Architecture & UX Blueprint](docs/ARCHITECTURE_PLAN.md): Multi-backend engine orchestration, subprocess lifecycle management, and system diagrams.
 - [Core User Journeys (CUJs) & Diátaxis Mapping](docs/USER_JOURNEYS.md): End-to-end developer workflows and issue tracker alignment.
 - [RFC 001: Envoy AI Gateway Hybrid Cloud Federation](docs/RFC_001_ENVOY_AI_GATEWAY_HYBRID_FEDERATION.md): Blueprint for federating local execution engines with Envoy proxies.
