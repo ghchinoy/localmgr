@@ -7,6 +7,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     weak var catalogService: ModelCatalogService?
     weak var appSettings: AppSettings?
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Crash-safety (localmgr-853.6): if a prior LocalMgr session was
+        // force-quit/crashed while an engine was running, that engine is
+        // orphaned (holding a port/VRAM with no supervisor). Detect and reap it
+        // at launch, before any new engine is spawned.
+        Task {
+            let result = await CrashSafetyWatchdog.checkForOrphansAtLaunch()
+            switch result {
+            case .noOrphan:
+                break
+            case .terminatedOrphan(let m):
+                AppLog.fault("Crash-safety: reaped orphaned engine '\(m.engineName)' (PID \(m.enginePID), model '\(m.modelName)', port \(m.port)) left by a prior LocalMgr session that did not exit cleanly", category: .runner)
+            case .staleMarkerOnly(let m):
+                AppLog.info("Crash-safety: cleared stale marker for '\(m.engineName)' (model '\(m.modelName)'); its process was already gone", category: .runner)
+            }
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         if appSettings?.terminateRunnersOnQuit ?? true {
             runnerManager?.stopCurrent()

@@ -427,6 +427,8 @@ class BackendRunnerManager: ObservableObject {
                 self.currentProcess = nil
                 self.pipeDrain?.stop()
                 self.pipeDrain = nil
+                // The engine process is gone; its crash-safety marker is stale.
+                CrashSafetyWatchdog.clearMarker()
             }
         }
 
@@ -436,6 +438,19 @@ class BackendRunnerManager: ObservableObject {
             try process.run()
             self.currentProcess = process
             AppLog.info("Launched \(binaryName) for '\(model.name)' on port \(port)", category: .runner)
+
+            // Record a crash-safety marker (localmgr-853.6) so that if LocalMgr
+            // itself is force-quit/crashes while this engine runs, the next
+            // launch can detect and reap the orphaned engine PID.
+            CrashSafetyWatchdog.writeMarker(CrashSafetyWatchdog.Marker(
+                localMgrPID: ProcessInfo.processInfo.processIdentifier,
+                enginePID: process.processIdentifier,
+                engineName: binaryName,
+                modelName: model.name,
+                modelPath: model.fileURL.path,
+                port: self.port,
+                startedAt: Date()
+            ))
             
             self.startupPhase = .waitingForHealth
             self.syncState(self.state.markStarting())
@@ -514,6 +529,9 @@ class BackendRunnerManager: ObservableObject {
         self.currentProcess = nil
         self.pipeDrain?.stop()
         self.pipeDrain = nil
+        // Engine is no longer LocalMgr-owned; drop its crash-safety marker so it
+        // is not mistaken for an orphan on the next launch (localmgr-853.6).
+        CrashSafetyWatchdog.clearMarker()
         self.syncState(nextState)
     }
 

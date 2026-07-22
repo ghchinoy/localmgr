@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-07-21
+
+_Patch release (Build 21) adding crash-safety cleanup for engine subprocesses orphaned by a force-quit or crash of LocalMgr itself._
+
+### Fixed
+- **Orphaned Engine Crash-Safety:** `applicationWillTerminate` only fires on a clean quit, so force-quitting or crashing LocalMgr while an engine was running left that engine subprocess orphaned — holding its port and VRAM/RAM with no supervisor and no UI record. New `CrashSafetyWatchdog` writes a marker file (LocalMgr PID + spawned engine PID) under `~/Library/Application Support/LocalMgr/RunningEngines/` on each engine launch, and on the next launch checks the recorded LocalMgr PID via `kill(pid, 0)`; if that owner is no longer alive, the recorded engine is a crash orphan and is reaped via bounded SIGTERM→SIGKILL escalation, then the marker is cleared. The marker is removed on clean stop/exit so live engines are never mistaken for orphans. Verified live: a real `llama-server` orphaned behind a dead owner PID was detected and terminated at the next launch (`[localmgr-853.6]`).
+
 ## [0.10.0] - 2026-07-21
 
 _Minor release (Build 20) adding empirical, measured-on-this-machine auto-tuning: benchmark real engine throughput, cache the winner, and prove the speedup in the UI before adopting it._
