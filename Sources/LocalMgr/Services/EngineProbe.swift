@@ -135,7 +135,7 @@ enum EngineProbe {
                 let joined = contentArr.compactMap { $0["text"] as? String }.joined(separator: " ")
                 if !joined.isEmpty { return joined }
             }
-            if let reasoning = msg["reasoning_content"] as? String, !reasoning.isEmpty { return reasoning }
+            if let reasoning = (msg["reasoning_content"] as? String) ?? (msg["reasoning"] as? String), !reasoning.isEmpty { return reasoning }
         }
         if let text = first["text"] as? String { return text }
         return ""

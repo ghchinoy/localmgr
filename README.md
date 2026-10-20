@@ -99,8 +99,12 @@ curl http://127.0.0.1:4891/v1/chat/completions \
   }'
 ```
 
-### Connect a coding agent (OpenCode, etc.)
+### Connect a coding agent or run Python & Go client examples
 Coding-agent clients like [OpenCode](https://opencode.ai) work against the same gateway via `@ai-sdk/openai-compatible`, no API key required. Streaming (`"stream": true`) is forwarded incrementally rather than buffered. Since LocalMgr runs one model at a time, configure a single model per agent-facing provider entry — requesting a different model than the active one returns `409 gateway-model-conflict` rather than auto-switching. See [User Guide → Connecting OpenCode](docs/USER_GUIDE.md#connecting-opencode) for a copy-pasteable `opencode.jsonc` snippet.
+
+For ready-to-run programmatic clients in **Python** and **Go** (buffered + SSE streaming + Gemma 4 reasoning trace extraction + `/v1/stats` inspection), see [`examples/`](examples/README.md):
+- **Python (`stdlib` only)**: `python3 examples/python/gateway_client.py` ([source](examples/python/gateway_client.py))
+- **Go (`stdlib` only)**: `cd examples/go && go run .` ([source](examples/go/main.go))
 
 ### Scrape live Prometheus metrics and JSON stats
 LocalMgr records continuous runtime telemetry—including token volume, generation speed (`tok/s`), Time-to-First-Token (`TTFT`), KV cache hit rates, and thermal state—stored in append-only JSONL format at `~/Library/Application Support/LocalMgr/Telemetry/history.jsonl`. Scrape live observability endpoints directly from the gateway:
@@ -140,6 +144,7 @@ Open the **Ops Dashboard** (`Cmd+Shift+O`) or inspect the sidebar telemetry head
 
 For deep dives into internal design decisions, routing architectures, and user workflows, explore the project documentation:
 - [User & Persona Guide](docs/USER_GUIDE.md): Practical step-by-step walkthroughs, reasoning model cURL recipes, and persona tutorials.
+- [Python & Go Gateway Client Examples](examples/README.md): Zero-dependency Python (`examples/python/gateway_client.py`) and Go (`examples/go/main.go`) reference clients for `/v1/chat/completions`, SSE streaming, and `/v1/stats`.
 - [Agent Client Best Practices](docs/AGENT_CLIENT_GUIDE.md): How to use LocalMgr's gateway with coding agents (OpenCode, Claude Code, etc.) — context window limits, minimal configs, `rtk` output filtering, and a sample project `AGENTS.md`.
 - [Architecture & UX Blueprint](docs/ARCHITECTURE_PLAN.md): Multi-backend engine orchestration, subprocess lifecycle management, and system diagrams.
 - [Core User Journeys (CUJs) & Diátaxis Mapping](docs/USER_JOURNEYS.md): End-to-end developer workflows and issue tracker alignment.

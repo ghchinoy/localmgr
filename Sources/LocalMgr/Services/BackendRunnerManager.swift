@@ -185,7 +185,7 @@ class BackendRunnerManager: ObservableObject {
                         if contentStr.isEmpty, let contentArr = msg["content"] as? [[String: Any]] {
                             contentStr = contentArr.compactMap { $0["text"] as? String }.joined(separator: " ")
                         }
-                        let reasoningStr = (msg["reasoning_content"] as? String) ?? ""
+                        let reasoningStr = (msg["reasoning_content"] as? String) ?? (msg["reasoning"] as? String) ?? ""
 
                         if !contentStr.isEmpty && !reasoningStr.isEmpty {
                             extractedText = "--- Thinking Process ---\n\(reasoningStr)\n\n--- Final Response ---\n\(contentStr)"

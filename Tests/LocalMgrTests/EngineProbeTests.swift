@@ -49,6 +49,13 @@ final class EngineProbeTests: XCTestCase {
         XCTAssertEqual(EngineProbe.extractSampleText(from: json), "Thinking Process: 1. analyze...")
     }
 
+    func testExtractSampleTextFallsBackToMLXReasoningField() {
+        let json = """
+        {"choices":[{"message":{"role":"assistant","content":"","reasoning":"MLX gemma4 thought process..."}}]}
+        """.data(using: .utf8)!
+        XCTAssertEqual(EngineProbe.extractSampleText(from: json), "MLX gemma4 thought process...")
+    }
+
     func testExtractSampleTextPrefersContentOverReasoning() {
         let json = """
         {"choices":[{"message":{"content":"final answer","reasoning_content":"some thinking"}}]}

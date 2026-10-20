@@ -94,8 +94,8 @@ enum ModelCompatibilityClassifier {
     /// variants used by multimodal models such as Gemma 4 / Gemma 3) that
     /// LocalMgr has verified against `mlx_lm.server` (localmgr-jug).
     private static let verifiedMLXModelTypes: Set<String> = [
-        // Gemma family (including multimodal text_config variants)
-        "gemma", "gemma2", "gemma3", "gemma3_text", "gemma4", "gemma4_text",
+        // Gemma family (including multimodal text_config and unified variants)
+        "gemma", "gemma2", "gemma3", "gemma3_text", "gemma4", "gemma4_text", "gemma4_unified", "gemma4_unified_text",
         // Llama family
         "llama", "mllama", "llama4",
         // Mistral / Mixtral

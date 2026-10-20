@@ -90,10 +90,10 @@ When querying modern **Reasoning / Thinking Models** (such as **Gemma 4**, **Dee
 
 #### Why Responses Can Appear Empty
 Thinking models divide their output into two streams:
-1. **The Chain-of-Thought (CoT)**: Emitted first into `choices[0].message.reasoning_content`.
+1. **The Chain-of-Thought (CoT)**: Emitted first into `choices[0].message.reasoning_content` (`llama-server`) or `choices[0].message.reasoning` (`mlx_lm.server` 0.32.2+).
 2. **The Final Answer**: Emitted second into `choices[0].message.content`.
 
-If your cURL payload sets a restrictive limit like `"max_tokens": 128`, the model may spend all 128 tokens reasoning inside `reasoning_content`. The engine hits the token limit (`finish_reason: "length"`) before it ever reaches the final answer, leaving `.content` completely empty (`""`)!
+If your cURL payload sets a restrictive limit like `"max_tokens": 128`, the model may spend all 128 tokens reasoning inside `reasoning_content` / `reasoning`. The engine hits the token limit (`finish_reason: "length"`) before it ever reaches the final answer, leaving `.content` completely empty (`""`)!
 
 #### Practical Solution: Allocate Headroom & Inspect Both Fields
 Always set `"max_tokens": 512` or higher for thinking models, and use `jq` to inspect both the internal reasoning and the final completion:
@@ -107,8 +107,21 @@ curl -s http://127.0.0.1:4891/v1/chat/completions \
       {"role": "user", "content": "Explain Apple Silicon zero-copy unified memory in one sentence."}
     ],
     "max_tokens": 512
-  }' | jq '{answer: .choices[0].message.content, thinking: .choices[0].message.reasoning_content}'
+  }' | jq '{answer: .choices[0].message.content, thinking: (.choices[0].message.reasoning_content // .choices[0].message.reasoning)}'
 ```
+
+### Ready-to-Run Python & Go Client Examples (`./examples`)
+
+For full programmatic examples covering gateway health checks (`/v1/stats`), catalog discovery (`/v1/models`), buffered chat completions, incremental SSE streaming (`"stream": true`), and `409 Conflict` handling, see [`examples/README.md`](../examples/README.md):
+
+- **Python 3 (`urllib`, zero external dependencies)**: [`examples/python/gateway_client.py`](../examples/python/gateway_client.py)
+  ```bash
+  python3 examples/python/gateway_client.py --model mlx-gemma-4-e2b
+  ```
+- **Go (`net/http`, zero external dependencies)**: [`examples/go/main.go`](../examples/go/main.go)
+  ```bash
+  cd examples/go && go run . -model mlx-gemma-4-e2b
+  ```
 
 ---
 
