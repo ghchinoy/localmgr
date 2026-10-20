@@ -180,10 +180,10 @@ struct OpsDashboardView: View {
         .onAppear {
             updateHeldValues()
         }
-        .onChange(of: store.records) { _ in
+        .onChange(of: store.records) {
             updateHeldValues()
         }
-        .onChange(of: catalog.selectedModel) { _ in
+        .onChange(of: catalog.selectedModel) {
             updateHeldValues(modelChanged: true)
         }
     }
@@ -201,7 +201,7 @@ struct OpsDashboardView: View {
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             let payload: [String: Any] = [
-                "model": active.name,
+                "model": active.engineModelIdentifier,
                 "messages": [["role": "user", "content": prompt]],
                 "max_tokens": 128
             ]

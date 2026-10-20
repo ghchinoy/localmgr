@@ -407,7 +407,7 @@ struct QuickTestView: View {
                     TextField("Test Prompt", text: $promptText)
                         .textFieldStyle(.roundedBorder)
                     Button(action: {
-                        runner.sendTestPing(modelName: model.name, promptText: promptText)
+                        runner.sendTestPing(modelName: model.engineModelIdentifier, promptText: promptText)
                     }) {
                         if runner.isPinging {
                             ProgressView().controlSize(.small)

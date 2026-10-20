@@ -138,10 +138,21 @@ struct RunnerState: Equatable {
         return newState
     }
 
+    /// Maximum characters retained in `logOutput` to prevent unbounded UI memory growth.
+    static let maxLogCharacters = 120_000
+
     /// Pure transition to append log output
     func appendLog(_ text: String) -> RunnerState {
         var newState = self
         newState.logOutput.append(text)
+        if newState.logOutput.count > Self.maxLogCharacters {
+            let suffix = newState.logOutput.suffix(Self.maxLogCharacters)
+            if let newlineIdx = suffix.firstIndex(of: "\n") {
+                newState.logOutput = String(suffix[suffix.index(after: newlineIdx)...])
+            } else {
+                newState.logOutput = String(suffix)
+            }
+        }
         return newState
     }
 

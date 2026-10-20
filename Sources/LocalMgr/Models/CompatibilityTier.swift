@@ -71,7 +71,7 @@ enum ModelCompatibilityClassifier {
     /// has specifically exercised with `llama-server`.
     private static let verifiedGGUFArchitectureMarkers: Set<String> = [
         // Gemma family
-        "gemma", "gemma2", "gemma4",
+        "gemma", "gemma2", "gemma3", "gemma4",
         // Llama family
         "llama", "llama-3", "llama3",
         // Mistral family
@@ -79,7 +79,7 @@ enum ModelCompatibilityClassifier {
         // Cohere family
         "command-r", "cohere2moe",
         // Qwen family
-        "qwen2", "qwen2moe",
+        "qwen2", "qwen2moe", "qwen3", "qwen3moe",
         // Phi family
         "phi3", "phi4",
         // DeepSeek family
@@ -88,6 +88,26 @@ enum ModelCompatibilityClassifier {
         "starcoder2",
         // Other confirmed
         "falcon", "mpt", "bert", "nomic-bert"
+    ]
+
+    /// MLX `config.json` `model_type` strings (including nested `text_config`
+    /// variants used by multimodal models such as Gemma 4 / Gemma 3) that
+    /// LocalMgr has verified against `mlx_lm.server` (localmgr-jug).
+    private static let verifiedMLXModelTypes: Set<String> = [
+        // Gemma family (including multimodal text_config variants)
+        "gemma", "gemma2", "gemma3", "gemma3_text", "gemma4", "gemma4_text",
+        // Llama family
+        "llama", "mllama", "llama4",
+        // Mistral / Mixtral
+        "mistral", "mixtral", "ministral",
+        // Qwen family
+        "qwen2", "qwen2_moe", "qwen2_5_vl", "qwen3", "qwen3_moe",
+        // Phi family
+        "phi", "phi3", "phimoe",
+        // DeepSeek family
+        "deepseek", "deepseek_v2", "deepseek_v3",
+        // Cohere / StarCoder
+        "cohere", "cohere2", "starcoder2"
     ]
 
     /// Classifies a scanned GGUF file using the metadata already extracted
@@ -141,9 +161,14 @@ enum ModelCompatibilityClassifier {
                 "mlx_lm.server may still load it -- start it and check Live Logs. If it fails, this architecture may need a newer mlx-lm release."
             )
         }
-        // LocalMgr does not currently parse MLX config.json model_type
-        // beyond presence -- treat any declared type as recognized-but-
-        // unverified rather than claiming false confidence.
+        let normalized = modelType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if verifiedMLXModelTypes.contains(normalized) {
+            return (
+                .verified,
+                "MLX model_type '\(modelType)' is recognized and has been verified with mlx_lm.server.",
+                nil
+            )
+        }
         return (
             .recognizedUnverified,
             "MLX model_type '\(modelType)' was declared, but LocalMgr has not specifically verified this architecture against the installed mlx-lm version.",

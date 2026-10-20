@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-10-20
+
+_Patch release (Build 24) completing Gemma 4 MLX/GGUF support, symlinked vault traversal, direct-to-engine MLX model-path resolution, and gateway/subprocess hardening._
+
+### Added
+- **MLX Gemma 4 & Verified Architecture Classification:** `ModelCompatibilityClassifier.classifyMLX` now marks `gemma4`/`gemma4_text`, `gemma3`/`gemma3_text`, `llama`, `qwen2`/`qwen3`, `mistral`, `phi3`, and `deepseek` MLX models as `.verified`, and `ModelCatalogService.inspectMLXConfig` extracts `max_position_embeddings`, `num_hidden_layers`, `num_key_value_heads`, and bit-width quantization (`MLX-4bit`) from top-level or nested `text_config` blocks in `config.json` (`[localmgr-jug]`).
+- **LiteRT `.litertlm` Discovery & `~/homebrew/bin` Binary Probing:** Added `.litertlm` to supported LiteRT model extensions and extended `EngineProbe` to probe `~/homebrew/bin` and all `~/.local/share/uv/tools/*/bin` directories (`[localmgr-n3n]`).
+
+### Fixed
+- **Symlinked Model Vault & HF Snapshot Blob Resolution:** `ModelCatalogService.scanFolders` now walks symlinked model directories and resolves multi-hop relative symlinks (such as Hugging Face `snapshots/<sha>/*.safetensors -> ../../blobs/<hash>`) via POSIX `realpath`, preserving friendly symlink names while reporting accurate multi-GB weight sizes and preventing symlink cycles (`[localmgr-n3n]`).
+- **Direct-to-Engine MLX & LiteRT Model Identifier Resolution:** Unified `ModelItem.engineModelIdentifier` across `LocalAPIGateway`, `BackendRunnerManager.sendTestPing`, `AutoTuneCoordinator.runTune`, and `OpsDashboardView.runBenchmarkMatrix` so direct port-8080 requests pass `fileURL.path` to `mlx_lm.server` instead of bare display names that triggered Hugging Face 404/500 errors (`[localmgr-glp]`).
+- **Gateway Loopback Binding, Pipe EOF Handling & Bounded Runner Logs:** Set `acceptLocalOnly = true` on `LocalAPIGateway`'s `NWListener`, cleared `readabilityHandler` on EOF in `SubprocessPipeDrain` to prevent CPU spin, bounded `RunnerState.logOutput`, and resolved macOS 14 `.onChange` deprecation warnings in `OpsDashboardView` (`[localmgr-g95]`).
+
 ## [0.10.3] - 2026-07-21
 
 _Patch release (Build 23) implementing 'held last-good value' anti-flicker pattern for OpsDashboardView telemetry tiles._
@@ -247,7 +260,13 @@ _Initial alpha release (Build 1)._
 - **Process Crash Recovery:** attach process `terminationHandler` to catch startup failures and preserve live terminal output (`lastRunModelID`) pinned on screen indefinitely after termination.
 - **Astral `uv` Tool Resolution:** probe `~/.local/bin/`, `~/.cargo/bin/`, and `~/.local/share/uv/tools/` for engine binaries and recognize `litert-benchmark` as an alias for LiteRT execution.
 
-[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/ghchinoy/localmgr/compare/v0.10.4...HEAD
+[0.10.4]: https://github.com/ghchinoy/localmgr/compare/v0.10.3...v0.10.4
+[0.10.3]: https://github.com/ghchinoy/localmgr/compare/v0.10.2...v0.10.3
+[0.10.2]: https://github.com/ghchinoy/localmgr/compare/v0.10.1...v0.10.2
+[0.10.1]: https://github.com/ghchinoy/localmgr/compare/v0.10.0...v0.10.1
+[0.10.0]: https://github.com/ghchinoy/localmgr/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/ghchinoy/localmgr/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/ghchinoy/localmgr/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/ghchinoy/localmgr/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ghchinoy/localmgr/compare/v0.6.0...v0.7.0

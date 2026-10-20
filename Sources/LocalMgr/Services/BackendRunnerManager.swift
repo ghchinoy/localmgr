@@ -152,12 +152,13 @@ class BackendRunnerManager: ObservableObject {
         recordActivity()
         beginRequest()
 
+        let resolvedModelIdentifier = activeModel?.engineModelIdentifier ?? modelName
         let url = URL(string: "http://127.0.0.1:\(port)/v1/chat/completions")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let payload: [String: Any] = [
-            "model": modelName,
+            "model": resolvedModelIdentifier,
             "messages": [["role": "user", "content": promptText]],
             "max_tokens": 256
         ]

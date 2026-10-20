@@ -76,7 +76,10 @@ final class SubprocessPipeDrain: @unchecked Sendable {
         
         outputPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
-            guard !data.isEmpty else { return }
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
             if let text = String(data: data, encoding: .utf8), !text.isEmpty {
                 Task { @MainActor [weak self] in
                     self?.buffer.append(text)

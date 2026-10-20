@@ -221,4 +221,14 @@ final class RunnerStateTests: XCTestCase {
         // lastRunModelID is retained as history even after eviction.
         XCTAssertNotNil(evicted.lastRunModelID)
     }
+
+    func testAppendLogBoundsOutputLength() {
+        var state = RunnerState()
+        let chunk = String(repeating: "a", count: 999) + "\n"
+        for _ in 0..<200 {
+            state = state.appendLog(chunk)
+        }
+        XCTAssertLessThanOrEqual(state.logOutput.count, RunnerState.maxLogCharacters)
+        XCTAssertTrue(state.logOutput.hasSuffix(chunk))
+    }
 }

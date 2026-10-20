@@ -96,6 +96,25 @@ struct ModelItem: Identifiable, Hashable {
         return formatter.string(fromByteCount: sizeBytes)
     }
 
+    /// The `"model"` field value that the backing engine subprocess expects
+    /// on its `/v1/chat/completions` endpoint:
+    /// - `mlx_lm.server` requires the full local directory path (`fileURL.path`);
+    ///   passing a bare folder name causes `huggingface_hub` to treat it as a
+    ///   remote repo ID and fail with 404/500 (localmgr-8nn, localmgr-glp).
+    /// - `litert-lm` requires the hyphenated model ID passed to `litert-lm import`
+    ///   (localmgr-190).
+    /// - `llama-server` and others accept `name`.
+    var engineModelIdentifier: String {
+        switch engineType {
+        case .mlx:
+            return fileURL.path
+        case .liteRT:
+            return name.replacingOccurrences(of: " ", with: "-")
+        default:
+            return name
+        }
+    }
+
     func memoryPressure(forContextLength ctx: Int = 8192) -> MemoryPressureBreakdown {
         let weights = sizeBytes
         // FP16/FP8 KV Cache estimation per token:

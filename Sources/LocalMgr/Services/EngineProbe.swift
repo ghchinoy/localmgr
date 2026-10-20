@@ -15,16 +15,30 @@ enum EngineProbe {
     /// `BackendRunnerManager.resolveBinaryPath`. Kept as a single source of
     /// truth so a newly-supported install location is picked up everywhere.
     static func searchPaths(for name: String) -> [String] {
-        [
+        let home = NSHomeDirectory()
+        var paths = [
             "/opt/homebrew/bin/\(name)",
+            "\(home)/homebrew/bin/\(name)",
             "/usr/local/bin/\(name)",
             "/usr/bin/\(name)",
-            NSHomeDirectory() + "/Library/Application Support/LocalMgr/Engines/\(name)",
-            NSHomeDirectory() + "/.local/bin/\(name)",
-            NSHomeDirectory() + "/.cargo/bin/\(name)",
-            NSHomeDirectory() + "/.local/share/uv/tools/ai-edge-litert/bin/\(name)",
-            NSHomeDirectory() + "/.local/share/uv/tools/mlx-lm/bin/\(name)"
+            "\(home)/Library/Application Support/LocalMgr/Engines/\(name)",
+            "\(home)/.local/bin/\(name)",
+            "\(home)/.cargo/bin/\(name)",
+            "\(home)/.local/share/uv/tools/ai-edge-litert/bin/\(name)",
+            "\(home)/.local/share/uv/tools/mlx-lm/bin/\(name)",
+            "\(home)/.local/share/uv/tools/huggingface-hub/bin/\(name)",
+            "\(home)/.local/share/uv/tools/harbor/bin/\(name)"
         ]
+        let uvToolsRoot = "\(home)/.local/share/uv/tools"
+        if let toolDirs = try? FileManager.default.contentsOfDirectory(atPath: uvToolsRoot) {
+            for tool in toolDirs.sorted() {
+                let candidate = "\(uvToolsRoot)/\(tool)/bin/\(name)"
+                if !paths.contains(candidate) {
+                    paths.append(candidate)
+                }
+            }
+        }
+        return paths
     }
 
     /// Resolves the absolute path to an engine binary by name, probing the

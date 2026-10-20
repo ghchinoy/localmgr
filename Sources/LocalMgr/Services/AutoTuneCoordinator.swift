@@ -104,7 +104,7 @@ final class AutoTuneCoordinator: ObservableObject {
         let report = await EmpiricalTuner.runBenchmark(
             engine: model.engineType,
             modelPath: model.fileURL.path,
-            modelName: model.fileURL.lastPathComponent,
+            modelName: model.engineModelIdentifier,
             binaryPath: binaryPath,
             profile: profile,
             contextLength: contextLength,

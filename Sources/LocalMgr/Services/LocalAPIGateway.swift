@@ -55,6 +55,7 @@ class LocalAPIGateway: ObservableObject {
         stopListening()
         do {
             let parameters = NWParameters.tcp
+            parameters.acceptLocalOnly = true
             let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
             
             listener.stateUpdateHandler = { [weak self] state in
@@ -476,22 +477,12 @@ class LocalAPIGateway: ObservableObject {
         }
 
         var finalBodyData = bodyData
-        if let activeModel = runner.activeModel {
-            if activeModel.engineType == .mlx {
-                if var json = jsonDict {
-                    json["model"] = activeModel.fileURL.path
-                    if let reSerialized = try? JSONSerialization.data(withJSONObject: json, options: []) {
-                        finalBodyData = reSerialized
-                    }
-                }
-            } else if activeModel.engineType == .liteRT {
-                if var json = jsonDict {
-                    let modelId = activeModel.name.replacingOccurrences(of: " ", with: "-")
-                    json["model"] = modelId
-                    if let reSerialized = try? JSONSerialization.data(withJSONObject: json, options: []) {
-                        finalBodyData = reSerialized
-                    }
-                }
+        if let activeModel = runner.activeModel,
+           (activeModel.engineType == .mlx || activeModel.engineType == .liteRT),
+           var json = jsonDict {
+            json["model"] = activeModel.engineModelIdentifier
+            if let reSerialized = try? JSONSerialization.data(withJSONObject: json, options: []) {
+                finalBodyData = reSerialized
             }
         }
 

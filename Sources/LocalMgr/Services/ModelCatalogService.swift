@@ -31,6 +31,7 @@ class ModelCatalogService: ObservableObject {
     @Published var selectedSortOption: ModelSortOption = .scanOrder
 
     private let bookmarksKey = "LocalMgrFolderBookmarks"
+    private let folderPathsKey = "LocalMgrFolderPaths"
 
     var filteredModels: [ModelItem] {
         var list = models
@@ -101,50 +102,225 @@ class ModelCatalogService: ObservableObject {
     func addFolder(_ url: URL) {
         guard !folders.contains(url) else { return }
         do {
-            let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            let bookmarkData = try (try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil))
+                ?? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
             var existing = UserDefaults.standard.array(forKey: bookmarksKey) as? [Data] ?? []
             existing.append(bookmarkData)
             UserDefaults.standard.set(existing, forKey: bookmarksKey)
-            
-            _ = url.startAccessingSecurityScopedResource()
-            folders.append(url)
-            refreshCatalog()
         } catch {
             AppLog.error("Failed to save security-scoped bookmark for folder '\(url.lastPathComponent)': \(error.localizedDescription)", category: .catalog)
         }
+
+        var savedPaths = UserDefaults.standard.stringArray(forKey: folderPathsKey) ?? []
+        if !savedPaths.contains(url.path) {
+            savedPaths.append(url.path)
+            UserDefaults.standard.set(savedPaths, forKey: folderPathsKey)
+        }
+
+        _ = url.startAccessingSecurityScopedResource()
+        folders.append(url)
+        refreshCatalog()
     }
 
     private func loadBookmarkedFolders() {
-        guard let bookmarkDataArray = UserDefaults.standard.array(forKey: bookmarksKey) as? [Data] else { return }
-        for data in bookmarkDataArray {
-            var isStale = false
-            do {
-                let url = try URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
-                if url.startAccessingSecurityScopedResource() {
+        var seenPaths = Set<String>()
+        if let bookmarkDataArray = UserDefaults.standard.array(forKey: bookmarksKey) as? [Data] {
+            for data in bookmarkDataArray {
+                var isStale = false
+                if let url = (try? URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale))
+                    ?? (try? URL(resolvingBookmarkData: data, options: [.withoutUI], relativeTo: nil, bookmarkDataIsStale: &isStale)) {
+                    _ = url.startAccessingSecurityScopedResource()
+                    if seenPaths.insert(url.standardizedFileURL.path).inserted {
+                        folders.append(url)
+                    }
+                } else {
+                    AppLog.error("Failed to resolve a saved folder bookmark.", category: .catalog)
+                }
+            }
+        }
+        if let savedPaths = UserDefaults.standard.stringArray(forKey: folderPathsKey) {
+            for path in savedPaths where FileManager.default.fileExists(atPath: path) {
+                let url = URL(fileURLWithPath: path)
+                if seenPaths.insert(url.standardizedFileURL.path).inserted {
                     folders.append(url)
                 }
-            } catch {
-                AppLog.error("Failed to resolve a saved folder bookmark: \(error.localizedDescription)", category: .catalog)
             }
         }
     }
 
     func refreshCatalog() {
+        self.models = Self.scanFolders(folders)
+    }
+
+    struct MLXConfigMetadata: Equatable {
+        let modelType: String?
+        let quantization: String
+        let contextLength: Int
+        let layerCount: Int
+        let headCountKV: Int
+    }
+
+    /// Resolves all symbolic links (including multi-hop and relative symlinks
+    /// inside symlinked parent directories, such as `../gemma/mlx-gemma-4-e2b/config.json`
+    /// -> `snapshots/<sha>/config.json` -> `../../blobs/<hash>`) using POSIX `realpath`.
+    nonisolated static func realpathURL(for url: URL) -> URL {
+        if let resolvedC = Darwin.realpath(url.path, nil) {
+            defer { free(resolvedC) }
+            let path = String(cString: resolvedC)
+            return URL(fileURLWithPath: path)
+        }
+        return url.resolvingSymlinksInPath().standardizedFileURL
+    }
+
+    nonisolated static func inspectMLXConfig(at configURL: URL) -> MLXConfigMetadata {
+        let resolvedURL = realpathURL(for: configURL)
+        guard let data = try? Data(contentsOf: resolvedURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return MLXConfigMetadata(
+                modelType: nil,
+                quantization: "MLX-Safetensors",
+                contextLength: 32768,
+                layerCount: 32,
+                headCountKV: 8
+            )
+        }
+
+        let textConfig = json["text_config"] as? [String: Any]
+
+        let modelType = (json["model_type"] as? String)
+            ?? (textConfig?["model_type"] as? String)
+
+        let contextLength = (json["max_position_embeddings"] as? Int)
+            ?? (textConfig?["max_position_embeddings"] as? Int)
+            ?? (json["max_sequence_length"] as? Int)
+            ?? (textConfig?["max_sequence_length"] as? Int)
+            ?? 32768
+
+        let layerCount = (json["num_hidden_layers"] as? Int)
+            ?? (textConfig?["num_hidden_layers"] as? Int)
+            ?? (json["n_layers"] as? Int)
+            ?? 32
+
+        let headCountKV = (json["num_key_value_heads"] as? Int)
+            ?? (textConfig?["num_key_value_heads"] as? Int)
+            ?? (json["num_attention_heads"] as? Int)
+            ?? (textConfig?["num_attention_heads"] as? Int)
+            ?? 8
+
+        var quantization = "MLX-Safetensors"
+        if let quantDict = (json["quantization"] as? [String: Any]) ?? (json["quantization_config"] as? [String: Any]),
+           let bits = quantDict["bits"] as? Int {
+            quantization = "MLX-\(bits)bit"
+        }
+
+        return MLXConfigMetadata(
+            modelType: modelType,
+            quantization: quantization,
+            contextLength: contextLength,
+            layerCount: layerCount,
+            headCountKV: headCountKV
+        )
+    }
+
+    /// Recursively enumerates files across `rootFolder`, following directory
+    /// symlinks (such as `../gemma/mlx-gemma-4-e2b -> ~/.cache/huggingface/hub/...`)
+    /// while tracking canonical directory paths in `visitedDirectories` to prevent
+    /// symlink cycles and duplicate scans (localmgr-n3n).
+    nonisolated private static func enumerateFilesFollowingSymlinks(
+        in rootFolder: URL,
+        visitedDirectories: inout Set<String>
+    ) -> [URL] {
+        let fileManager = FileManager.default
+        var collected: [URL] = []
+
+        func walk(_ directory: URL) {
+            let resolvedDirURL = realpathURL(for: directory)
+            let canonicalDir = resolvedDirURL.path
+            var isDir: ObjCBool = false
+            guard fileManager.fileExists(atPath: canonicalDir, isDirectory: &isDir), isDir.boolValue else {
+                return
+            }
+            guard visitedDirectories.insert(canonicalDir).inserted else {
+                return
+            }
+            guard let entryNames = try? fileManager.contentsOfDirectory(atPath: canonicalDir) else {
+                return
+            }
+            let sortedNames = entryNames
+                .filter { !$0.hasPrefix(".") }
+                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+
+            for name in sortedNames {
+                let logicalEntry = directory.appendingPathComponent(name)
+                let resolvedEntryPath = realpathURL(for: logicalEntry).path
+                var entryIsDir: ObjCBool = false
+                guard fileManager.fileExists(atPath: resolvedEntryPath, isDirectory: &entryIsDir) else {
+                    // Broken/dangling symlink -> skip cleanly
+                    continue
+                }
+                if entryIsDir.boolValue {
+                    walk(logicalEntry)
+                } else {
+                    collected.append(logicalEntry)
+                }
+            }
+        }
+
+        walk(rootFolder)
+        return collected
+    }
+
+    /// Resolves the byte size of `fileURL`, following symlinks (e.g. Hugging Face
+    /// `snapshots/<sha>/*.safetensors -> ../../blobs/<hash>`) so symlinked weight
+    /// files report their true size rather than the symlink's own byte length.
+    nonisolated static func resolvedFileSize(for fileURL: URL) -> Int64 {
+        let resolved = realpathURL(for: fileURL)
+        if let size = try? resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+            return Int64(size)
+        }
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: resolved.path),
+           let num = attrs[.size] as? NSNumber {
+            return num.int64Value
+        }
+        return 0
+    }
+
+    /// Derives a human-friendly display name for an MLX model directory.
+    /// Preserves the directory or symlink name (e.g. `mlx-gemma-4-e2b`), unless
+    /// the directory is a raw Hugging Face `snapshots/<sha>` folder, in which
+    /// case it extracts the repo name from `models--<org>--<repo>`.
+    nonisolated static func friendlyMLXFolderName(for parentURL: URL) -> String {
+        if parentURL.deletingLastPathComponent().lastPathComponent == "snapshots" {
+            let repoDir = parentURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
+            if repoDir.hasPrefix("models--") {
+                return String(repoDir.dropFirst("models--".count)).replacingOccurrences(of: "--", with: "/")
+            }
+        }
+        return parentURL.lastPathComponent
+    }
+
+    nonisolated static func scanFolders(_ folders: [URL]) -> [ModelItem] {
         var scanned: [ModelItem] = []
         let fileManager = FileManager.default
+        var visitedDirectories = Set<String>()
+        var visitedFiles = Set<String>()
 
         for folder in folders {
-            guard let enumerator = fileManager.enumerator(at: folder, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey]) else { continue }
+            let files = enumerateFilesFollowingSymlinks(in: folder, visitedDirectories: &visitedDirectories)
 
-            for case let fileURL as URL in enumerator {
-                if fileURL.pathExtension.lowercased() == "gguf" {
-                    let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-                    let headerInfo = GGUFHeaderParser.inspect(url: fileURL)
+            for fileURL in files {
+                let canonicalFile = realpathURL(for: fileURL).path
+                let ext = fileURL.pathExtension.lowercased()
+
+                if ext == "gguf" {
+                    guard visitedFiles.insert(canonicalFile).inserted else { continue }
+                    let size = resolvedFileSize(for: fileURL)
+                    let headerInfo = GGUFHeaderParser.inspect(url: realpathURL(for: fileURL))
                     var item = ModelItem(
                         name: fileURL.deletingPathExtension().lastPathComponent,
                         fileURL: fileURL,
                         format: .gguf,
-                        sizeBytes: Int64(size),
+                        sizeBytes: size,
                         engineType: .llamaCpp,
                         quantization: headerInfo.quantization,
                         contextLength: headerInfo.contextLength,
@@ -159,13 +335,14 @@ class ModelCatalogService: ObservableObject {
                     item.compatibilityMessage = compat.message
                     item.compatibilityRecommendedAction = compat.recommendedAction
                     scanned.append(item)
-                } else if ["tflite", "tfl", "task", "litert"].contains(fileURL.pathExtension.lowercased()) {
-                    let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                } else if ["tflite", "tfl", "task", "litert", "litertlm"].contains(ext) {
+                    guard visitedFiles.insert(canonicalFile).inserted else { continue }
+                    let size = resolvedFileSize(for: fileURL)
                     let item = ModelItem(
                         name: fileURL.deletingPathExtension().lastPathComponent,
                         fileURL: fileURL,
                         format: .liteRT,
-                        sizeBytes: Int64(size),
+                        sizeBytes: size,
                         engineType: .liteRT,
                         quantization: "LiteRT-Quantized",
                         contextLength: 4096,
@@ -174,25 +351,27 @@ class ModelCatalogService: ObservableObject {
                     )
                     scanned.append(item)
                 } else if fileURL.lastPathComponent == "config.json" {
+                    guard visitedFiles.insert(canonicalFile).inserted else { continue }
                     // Check if parent directory represents an MLX package
                     let parentURL = fileURL.deletingLastPathComponent()
-                    let folderName = parentURL.lastPathComponent
-                    if folderName.lowercased().contains("mlx") || (try? fileManager.contentsOfDirectory(atPath: parentURL.path).contains(where: { $0.hasSuffix(".safetensors") })) == true {
+                    let resolvedParentPath = realpathURL(for: parentURL).path
+                    let folderName = friendlyMLXFolderName(for: parentURL)
+                    let hasSafetensors = (try? fileManager.contentsOfDirectory(atPath: resolvedParentPath).contains(where: { $0.hasSuffix(".safetensors") })) == true
+                    if folderName.lowercased().contains("mlx") || hasSafetensors {
                         let size = calculateFolderSize(url: parentURL)
+                        let mlxMeta = inspectMLXConfig(at: fileURL)
                         var item = ModelItem(
                             name: folderName,
                             fileURL: parentURL,
                             format: .mlx,
                             sizeBytes: size,
                             engineType: .mlx,
-                            quantization: "MLX-Safetensors",
-                            contextLength: 32768,
-                            layerCount: 32,
-                            headCountKV: 8
+                            quantization: mlxMeta.quantization,
+                            contextLength: mlxMeta.contextLength,
+                            layerCount: mlxMeta.layerCount,
+                            headCountKV: mlxMeta.headCountKV
                         )
-                        let modelType = (try? Data(contentsOf: fileURL))
-                            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["model_type"] as? String
-                        let compat = ModelCompatibilityClassifier.classifyMLX(modelType: modelType)
+                        let compat = ModelCompatibilityClassifier.classifyMLX(modelType: mlxMeta.modelType)
                         item.compatibilityTier = compat.tier
                         item.compatibilityMessage = compat.message
                         item.compatibilityRecommendedAction = compat.recommendedAction
@@ -202,16 +381,15 @@ class ModelCatalogService: ObservableObject {
             }
         }
 
-        self.models = scanned
+        return scanned
     }
 
-    private func calculateFolderSize(url: URL) -> Int64 {
+    nonisolated static func calculateFolderSize(url: URL) -> Int64 {
         var total: Int64 = 0
-        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        let resolvedRoot = realpathURL(for: url)
+        guard let enumerator = FileManager.default.enumerator(at: resolvedRoot, includingPropertiesForKeys: [.fileSizeKey, .isSymbolicLinkKey]) else { return 0 }
         for case let fileURL as URL in enumerator {
-            if let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                total += Int64(size)
-            }
+            total += resolvedFileSize(for: fileURL)
         }
         return total
     }

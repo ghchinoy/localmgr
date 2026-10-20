@@ -234,23 +234,6 @@ class EngineReadinessService: ObservableObject {
     }
 
     private func findBinaryPath(name: String) -> String? {
-        let fileManager = FileManager.default
-        let searchPaths = [
-            "/opt/homebrew/bin/\(name)",
-            "/usr/local/bin/\(name)",
-            "/usr/bin/\(name)",
-            NSHomeDirectory() + "/Library/Application Support/LocalMgr/Engines/\(name)",
-            NSHomeDirectory() + "/.local/bin/\(name)",
-            NSHomeDirectory() + "/.cargo/bin/\(name)",
-            NSHomeDirectory() + "/.local/share/uv/tools/ai-edge-litert/bin/\(name)",
-            NSHomeDirectory() + "/.local/share/uv/tools/mlx-lm/bin/\(name)"
-        ]
-
-        for path in searchPaths {
-            if fileManager.fileExists(atPath: path) {
-                return path
-            }
-        }
-        return nil
+        return EngineProbe.resolveBinaryPath(name: name)
     }
 }
